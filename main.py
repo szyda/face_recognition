@@ -1,47 +1,61 @@
-import tensorflow_datasets as tfds
-from data_processor import DataProcessor
+import os
+import cv2
+import numpy as np
+from data_processor import DataPreprocessor
 from face_recognizer import FaceRecognizer
-import time
-import tensorflow as tf
+from collections import Counter
 
 def main():
-    lfw_dataset, info = tfds.load('lfw', split='train', with_info=True)
-    input_shape = (224, 224, 3)
-    batch_size = 32
+    print("Initialize the DataPreprocessor for dataset division")
+    data_processor_divide = DataPreprocessor()
 
-    data_processor = DataProcessor(lfw_dataset, image_size=input_shape[:2], batch_size=batch_size)
+    # print("Dividing the dataset into training and validation sets...")
+    # data_processor_divide.divide_dataset()
 
-    print("Loading training and validation data...")
-    train_data = data_processor.get_train_data()
-    val_data = data_processor.get_validation_data()
+    print("Load and preprocess training data")
+    train_images, train_labels = data_processor_divide.load_training_data()
 
-    num_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
-    num_val = val_data.reduce(0, lambda x, _: x + 1).numpy()
-    print(f"Number of training photos: {num_train}")
-    print(f"Number of validation photos: {num_val}")
+    print("Load and preprocess validation data")
+    val_images, val_labels = data_processor_divide.load_validation_data()
 
+    print(f"Loaded {len(train_images)} training images with labels: {Counter(train_labels)}")
+    print(f"Loaded {len(val_images)} validation images with labels: {Counter(val_labels)}")
 
-    print("Generating image pairs...")
-    train_pairs, train_labels = data_processor.generate_image_pairs(train_data)
-    print(f"Number of training pairs: {len(train_pairs)}")
+    print("Creating training data generator...")
+    train_data_generator = DataPreprocessor(
+        images=train_images,
+        labels=train_labels,
+        image_size=(224, 224),
+        batch_size=32,
+        shuffle=True
+    )
 
-    print("Generating validation image pairs...")
-    val_pairs, val_labels = data_processor.generate_image_pairs(val_data)
-    print(f"Number of validation pairs: {len(val_pairs)}")
+    print("Creating validation data generator...")
+    val_data_generator = DataPreprocessor(
+        images=val_images,
+        labels=val_labels,
+        image_size=(224, 224),
+        batch_size=32,
+        shuffle=False
+    )
 
-    # Something went wrong - need to check why the pairs are empty
-    if train_pairs.size == 0 or val_pairs.size == 0:
-        print("Error: Generated pairs are empty. Exiting.")
-        return
+    print("Initialize face recognizer")
+    face_recognizer = FaceRecognizer()
 
-    print("Preparing TensorFlow datasets...")
-    train_dataset = tf.data.Dataset.from_tensor_slices(((train_pairs[:, 0], train_pairs[:, 1]), train_labels)).batch(batch_size)
-    val_dataset = tf.data.Dataset.from_tensor_slices(((val_pairs[:, 0], val_pairs[:, 1]), val_labels)).batch(batch_size)
+    print("Testing the generator before training...")
+    test_batch = train_data_generator.__getitem__(0)
+    print("Test batch generated shapes:")
+    print(f"Image 1 batch shape: {test_batch[0][0].shape}")
+    print(f"Image 2 batch shape: {test_batch[0][1].shape}")
+    print(f"Labels batch shape: {test_batch[1].shape}")
 
-    face_recognizer = FaceRecognizer(input_shape=input_shape)
+    print("Training model ...")
+    history = face_recognizer.train(train_data=train_data_generator, val_data=val_data_generator, epochs=5)
 
-    print("Training the model...")
-    history = face_recognizer.train(train_dataset, val_dataset, epochs=10)
+    print("Evaluating model ...")
+    face_recognizer.evaluate(val_data_generator)
+
+    print("Training and evaluation completed.")
 
 if __name__ == "__main__":
     main()

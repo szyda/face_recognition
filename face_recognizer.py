@@ -25,6 +25,7 @@ class FaceRecognizer:
         model.add(GlobalAveragePooling2D())
         model.add(Dense(256, activation='relu'))
         model.add(Dropout(self.dropout_rate))
+
         return model
 
     def siamese_model(self):
@@ -41,7 +42,7 @@ class FaceRecognizer:
         output = Dense(1, activation='sigmoid')(distance)
 
         model = Model(inputs=[first_input, second_input], outputs=output)
-        model.compile(optimizer=Adam(self.learning_rate), loss='binary_crossentropy', metrics=['accuracy'])
+        model.compile(optimizer=Adam(learning_rate=0.0001), loss='binary_crossentropy', metrics=['accuracy'])
 
         return model
 
@@ -49,8 +50,9 @@ class FaceRecognizer:
         return self.siamese_model()
 
     def train(self, train_data, val_data, epochs=10):
-        logs_dir = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        tensorboard_callback = TensorBoard(log_dir=logs_dir, histogram_freq=1)
+        log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch='500,520')
+
         checkpoint = tf.keras.callbacks.ModelCheckpoint(
             'model.weights.h5',
             monitor='val_accuracy',
@@ -63,7 +65,8 @@ class FaceRecognizer:
             train_data,
             epochs=epochs,
             validation_data=val_data,
-            callbacks=[checkpoint, tensorboard_callback]
+            callbacks=[checkpoint, tensorboard_callback],
+            verbose=1
         )
 
         end = time.time()
@@ -92,4 +95,3 @@ class FaceRecognizer:
     def evaluate(self, test_data):
         loss, accuracy = self.model.evaluate(test_data)
         print(f"Test loss: {loss:.4f}\nTest accuracy: {accuracy:.4f}")
-
