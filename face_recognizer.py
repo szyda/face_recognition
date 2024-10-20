@@ -49,7 +49,7 @@ class FaceRecognizer:
     def build_model(self):
         return self.siamese_model()
 
-    def train(self, train_data, val_data, epochs=10):
+    def train(self, train_data, val_data, epochs=10, steps_per_epoch=None, validation_steps=None):
         log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch='500,520')
 
@@ -65,6 +65,7 @@ class FaceRecognizer:
             train_data,
             epochs=epochs,
             validation_data=val_data,
+            validation_steps=validation_steps,
             callbacks=[checkpoint, tensorboard_callback],
             verbose=1
         )

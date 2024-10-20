@@ -2,228 +2,126 @@ import os
 import cv2
 import numpy as np
 import random
-import shutil
-from collections import Counter
-from tensorflow.keras.utils import Sequence
 
-class DataPreprocessor(Sequence):
-    def __init__(self, images=None, labels=None, data_directory="/Users/sszyda/face_recognition/dataset", training_directory="/Users/sszyda/face_recognition/train",
-                 val_directory="/Users/sszyda/face_recognition/val", image_size=(224, 224), batch_size=32, validation_split=0.3, shuffle=True):
+class DataProcessor:
+    def __init__(self, data_directory="dataset", image_size=(224, 224), batch_size=32, validation_split=0.2):
         self.data_directory = data_directory
-        self.training_directory = training_directory
-        self.val_directory = val_directory
         self.image_size = image_size
         self.batch_size = batch_size
         self.validation_split = validation_split
-        self.shuffle = shuffle
 
-        self.images = images
-        self.labels = labels
-        self.pairs = []
-        self.labels_pair = []
-        self.indexes = []
+        self.train_images = []
+        self.train_labels = []
+        self.val_images = []
+        self.val_labels = []
 
-        if images is not None and labels is not None:
-            self.on_epoch_end()  
+        self.load_and_split_data()
+        self.train_pairs = []
+        self.train_labels_pair = []
+        self.val_pairs = []
+        self.val_labels_pair = []
 
-    def load_images(self, directory):
+        self.generate_pairs()
+
+    def load_data(self):
         images = []
         labels = []
+        label_to_images = {}
 
-        for celebrity in os.listdir(directory):
-            celebrity_directory = os.path.join(directory, celebrity)
+        for identity in os.listdir(self.data_directory):
+            identity_dir = os.path.join(self.data_directory, identity)
+            if os.path.isdir(identity_dir):
+                img_files = [os.path.join(identity_dir, f) for f in os.listdir(identity_dir) if f.endswith('.png')]
+                labels.extend([identity] * len(img_files))
+                images.extend(img_files)
+                label_to_images[identity] = img_files
 
-            if os.path.isdir(celebrity_directory):
-                for name in os.listdir(celebrity_directory):
-                    image_path = os.path.join(celebrity_directory, name)
-                    if cv2.imread(image_path) is not None:
-                        images.append(image_path)
-                        labels.append(celebrity)
-                    else:
-                        print(f"Warning: Could not read image {image_path}")
+        return images, labels, label_to_images
 
-        return images, labels
+    def load_and_split_data(self):
+        images, labels, label_to_images = self.load_data()
 
-    def divide_dataset(self):
-        images, labels = self.load_images(self.data_directory)
+        # split into train and validation
+        for label, img_list in label_to_images.items():
+            num_images = len(img_list)
+            random.shuffle(img_list)
+            num_val = int(num_images * self.validation_split)
+            num_train = num_images - num_val
 
-        if os.path.exists(self.training_directory):
-            shutil.rmtree(self.training_directory)
-        if os.path.exists(self.val_directory):
-            shutil.rmtree(self.val_directory)
+            self.train_images.extend(img_list[:num_train])
+            self.train_labels.extend([label] * num_train)
+            self.val_images.extend(img_list[num_train:])
+            self.val_labels.extend([label] * num_val)
 
-        os.makedirs(self.training_directory, exist_ok=True)
-        os.makedirs(self.val_directory, exist_ok=True)
+        print(f"Training set: {len(self.train_images)} images")
+        print(f"Validation set: {len(self.val_images)} images")
 
+    def build_label_to_images(self, images, labels):
         label_to_images = {}
         for img, label in zip(images, labels):
-            if label not in label_to_images:
-                label_to_images[label] = []
-            label_to_images[label].append(img)
+            label_to_images.setdefault(label, []).append(img)
+        return label_to_images
 
-        train_images = []
-        train_labels = []
-        val_images = []
-        val_labels = []
+    def generate_pairs(self, num_pairs_per_identity=20):
+        label_to_images_train = self.build_label_to_images(self.train_images, self.train_labels)
+        self.train_pairs, self.train_labels_pair = self.create_pairs(label_to_images_train, num_pairs_per_identity)
 
-        for label, img_list in label_to_images.items():
-            if len(img_list) < 2:
-                continue
+        label_to_images_val = self.build_label_to_images(self.val_images, self.val_labels)
+        self.val_pairs, self.val_labels_pair = self.create_pairs(label_to_images_val, num_pairs_per_identity)
 
-            random.shuffle(img_list)  
-
-            num_images = len(img_list)
-
-            if num_images >= 4:
-                num_val = max(2, int(num_images * self.validation_split))
-                num_train = num_images - num_val
-
-                if num_train < 2:
-                    num_train = 2
-                    num_val = num_images - num_train
-
-                if num_val < 2:
-                    num_val = 2
-                    num_train = num_images - num_val
-
-                train_imgs = img_list[:num_train]
-                val_imgs = img_list[num_train:num_train + num_val]
-
-                train_images.extend(train_imgs)
-                train_labels.extend([label] * len(train_imgs))
-
-                val_images.extend(val_imgs)
-                val_labels.extend([label] * len(val_imgs))
-            else:
-                pass
-
-        for img, label in zip(train_images, train_labels):
-            label_dir = os.path.join(self.training_directory, label)
-            os.makedirs(label_dir, exist_ok=True)
-            dest_path = os.path.join(label_dir, os.path.basename(img))
-            if not os.path.exists(dest_path):
-                shutil.copy2(img, dest_path)
-
-        for img, label in zip(val_images, val_labels):
-            label_dir = os.path.join(self.val_directory, label)
-            os.makedirs(label_dir, exist_ok=True)
-            dest_path = os.path.join(label_dir, os.path.basename(img))
-            if not os.path.exists(dest_path):
-                shutil.copy2(img, dest_path)
-
-        print(f"Training set: {len(train_images)} images")
-        print(f"Validation set: {len(val_images)} images")
-
-        train_distribution = Counter(train_labels)
-        val_distribution = Counter(val_labels)
-        print(f"Training distribution: {train_distribution}")
-        print(f"Validation distribution: {val_distribution}")
-
-    def load_training_data(self):
-        images, labels = self.load_images(self.training_directory)
-        return images, labels
-
-    def load_validation_data(self):
-        images, labels = self.load_images(self.val_directory)
-        return images, labels
-
-    def __len__(self):
-        return int(np.ceil(len(self.pairs) / self.batch_size))
-
-    def on_epoch_end(self):
-        positive_pairs, negative_pairs = self.generate_pairs(self.images, self.labels)
-        self.pairs = positive_pairs + negative_pairs
-        self.labels_pair = [1]*len(positive_pairs) + [0]*len(negative_pairs)
-        self.indexes = np.arange(len(self.pairs))
-        if self.shuffle:
-            np.random.shuffle(self.indexes)
-
-    def __getitem__(self, index):
-        start = index * self.batch_size
-        end = min((index + 1) * self.batch_size, len(self.pairs))
-        batch_indexes = self.indexes[start:end]
-        batch_pairs = [self.pairs[i] for i in batch_indexes]
-        batch_labels = [self.labels_pair[i] for i in batch_indexes]
-
-        img1_batch = []
-        img2_batch = []
-        valid_labels = []
-        for (img1_path, img2_path), label in zip(batch_pairs, batch_labels):
-            img1 = cv2.imread(img1_path)
-            img2 = cv2.imread(img2_path)
-            if img1 is None or img2 is None:
-                continue
-            img1 = cv2.resize(img1, self.image_size)
-            img2 = cv2.resize(img2, self.image_size)
-            img1 = img1 / 255.0
-            img2 = img2 / 255.0
-            img1_batch.append(img1)
-            img2_batch.append(img2)
-            valid_labels.append(label)
-
-        if not img1_batch:
-            return self.__getitem__((index + 1) % self.__len__())  
-
-        img1_batch = np.array(img1_batch)
-        img2_batch = np.array(img2_batch)
-        batch_labels = np.array(valid_labels)
-
-        return (img1_batch, img2_batch), batch_labels
-
-    def generate_pairs(self, images, labels, num_pairs_per_class=100):
+    def create_pairs(self, label_to_images, num_pairs_per_identity):
         positive_pairs = []
         negative_pairs = []
 
-        label_to_images = {}
-        for img, label in zip(images, labels):
-            if label not in label_to_images:
-                label_to_images[label] = []
-            label_to_images[label].append(img)
-
         # positive pairs
-        total_positive_pairs = 0
         for label, img_list in label_to_images.items():
             if len(img_list) >= 2:
-                pairs = [(img_list[i], img_list[j]) for i in range(len(img_list)) for j in range(i + 1, len(img_list))]
+                pairs = list(zip(img_list[:-1], img_list[1:]))
                 random.shuffle(pairs)
-                pairs = pairs[:num_pairs_per_class]
-                positive_pairs.extend(pairs)
-                num_pairs_generated = len(pairs)
-                total_positive_pairs += num_pairs_generated
-                print(f"Generated {num_pairs_generated} positive pairs for class '{label}'")
-
-        print(f"Total positive pairs generated: {total_positive_pairs}")
+                positive_pairs.extend(pairs[:num_pairs_per_identity])
 
         # negative pairs
-        all_images = images.copy()
-        img_to_label = {img: label for img, label in zip(images, labels)}
-        negative_pairs_set = set()
-        attempts = 0
-        max_attempts = len(positive_pairs) * 10  p
-        while len(negative_pairs) < len(positive_pairs) and attempts < max_attempts:
-            img1, img2 = random.sample(all_images, 2)
-            label1 = img_to_label[img1]
-            label2 = img_to_label[img2]
-            if label1 != label2 and (img1, img2) not in negative_pairs_set:
-                negative_pairs.append((img1, img2))
-                negative_pairs_set.add((img1, img2))
-            attempts += 1
+        labels_list = list(label_to_images.keys())
+        num_negative_pairs = len(positive_pairs)
+        while len(negative_pairs) < num_negative_pairs:
+            label1, label2 = random.sample(labels_list, 2)
+            img1 = random.choice(label_to_images[label1])
+            img2 = random.choice(label_to_images[label2])
+            negative_pairs.append((img1, img2))
 
-        if len(negative_pairs) < len(positive_pairs):
-            print("Warning: Could not generate enough negative pairs to balance the dataset.")
+        pairs = positive_pairs + negative_pairs
+        labels_pair = [1] * len(positive_pairs) + [0] * len(negative_pairs)
 
-        print(f"Total negative pairs generated: {len(negative_pairs)}")
-
-        self.pairs = positive_pairs + negative_pairs
-        self.labels_pair = [1] * len(positive_pairs) + [0] * len(negative_pairs)
-        combined = list(zip(self.pairs, self.labels_pair))
+        combined = list(zip(pairs, labels_pair))
         random.shuffle(combined)
-        self.pairs[:], self.labels_pair[:] = zip(*combined)
+        pairs[:], labels_pair[:] = zip(*combined)
 
-        return positive_pairs, negative_pairs
+        print(f"Generated {len(positive_pairs)} positive pairs and {len(negative_pairs)} negative pairs.")
+        return pairs, labels_pair
 
-    def get_data_generator(self, images, labels):
-        self.images = images
-        self.labels = labels
-        self.on_epoch_end()
-        return self  
+    def data_generator(self, pairs, labels_pair):
+        num_samples = len(pairs)
+        while True:
+            for offset in range(0, num_samples, self.batch_size):
+                batch_pairs = pairs[offset:offset+self.batch_size]
+                batch_labels = labels_pair[offset:offset+self.batch_size]
+
+                img1_batch = []
+                img2_batch = []
+                for img1_path, img2_path in batch_pairs:
+                    img1 = cv2.imread(img1_path)
+                    img2 = cv2.imread(img2_path)
+                    if img1 is None or img2 is None:
+                        continue
+                    img1 = cv2.resize(img1, self.image_size)
+                    img2 = cv2.resize(img2, self.image_size)
+                    img1 = img1 / 255.0
+                    img2 = img2 / 255.0
+                    img1_batch.append(img1)
+                    img2_batch.append(img2)
+
+                img1_batch = np.array(img1_batch)
+                img2_batch = np.array(img2_batch)
+                batch_labels_array = np.array(batch_labels[:len(img1_batch)])
+
+                yield (img1_batch, img2_batch), batch_labels_array
