@@ -1,37 +1,53 @@
 import os
-import cv2
-import numpy as np
-from data_processor import DataProcessor
-from face_recognizer import FaceRecognizer
-from collections import Counter
+import random
+from datetime import time
+from data_processor import DataSequenceGenerator
+from face_recognizer import FaceRecognition
 
 def main():
-    print("Initializing DataProcessor...")
-    data_processor = DataProcessor(data_directory="dataset", image_size=(224, 224), batch_size=32)
+    data_directory = "dataset"
+    image_size = (224, 224)
+    batch_size = 32
+    augment = True
+    shuffle = True
+    validation_split = 0.3
+    num_identities_to_use = 17
+    num_images_per_identity = 72
+    num_pairs_per_identity = 200
 
-    print("Creating training data generator...")
-    train_generator = data_processor.data_generator(data_processor.train_pairs, data_processor.train_labels_pair)
-
-    print("Creating validation data generator...")
-    val_generator = data_processor.data_generator(data_processor.val_pairs, data_processor.val_labels_pair)
-
-    print("Initializing face recognizer...")
-    face_recognizer = FaceRecognizer()
-
-    steps_per_epoch = len(data_processor.train_pairs) // data_processor.batch_size
-    validation_steps = len(data_processor.val_pairs) // data_processor.batch_size
-
-    print("Training model...")
-    face_recognizer.train(
-        train_data=train_generator,
-        val_data=val_generator,
-        epochs=5,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps
+    train_generator = DataSequenceGenerator(
+        data_directory=data_directory,
+        image_size=image_size,
+        batch_size=batch_size,
+        num_pairs_per_identity=num_pairs_per_identity,
+        validation_split=validation_split,
+        augment=augment,
+        shuffle=shuffle,
+        mode='train',
+        num_identities_to_use=num_identities_to_use,
+        num_images_per_identity=num_images_per_identity
     )
 
-    print("Training completed.")
+    val_generator = DataSequenceGenerator(
+        data_directory=data_directory,
+        image_size=image_size,
+        batch_size=batch_size,
+        num_pairs_per_identity=num_pairs_per_identity,
+        validation_split=validation_split,
+        augment=False,
+        shuffle=False,
+        mode='validation',
+        num_identities_to_use=num_identities_to_use,
+        num_images_per_identity=num_images_per_identity
+    )
 
+    # Optional: Visualize sample training pairs to ensure correctness
+    # visualize_sample_pairs(train_generator, num_samples=5)
+
+    face_recognizer = FaceRecognition(input_shape=image_size + (3,), learning_rate=0.0001, dropout_rate=0.3)
+    history = face_recognizer.train(model=face_recognizer.model, train_generator=train_generator, val_generator=val_generator, epochs=50)
+
+    face_recognizer.save_model(filepath='models/final_siamese_model.h5')
 
 if __name__ == "__main__":
     main()

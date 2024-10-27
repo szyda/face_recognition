@@ -1,98 +1,87 @@
-from tensorflow.keras.models import Model, Sequential
-from tensorflow.keras.layers import Input, Lambda, Dense, GlobalAveragePooling2D, Dropout
+import os
+import datetime
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Lambda, Dense, Dropout, GlobalAveragePooling2D
 from tensorflow.keras.applications import ResNet50
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import tensorflow.keras.backend as K
 import numpy as np
-import time
-import datetime
-import tensorflow as tf
-import cv2
+import matplotlib.pyplot as plt
 
 
-class FaceRecognizer:
-    def __init__(self, input_shape=(224, 224, 3), learning_rate=0.0001, dropout_rate=0.3):
+class FaceRecognition:
+    def __init__(self, input_shape=(224, 224, 3), learning_rate=1e-4, dropout_rate=0.3):
         self.input_shape = input_shape
         self.learning_rate = learning_rate
         self.dropout_rate = dropout_rate
         self.model = self.build_model()
 
-    def base_model(self):
-        base = ResNet50(weights='imagenet', include_top=False, input_shape=self.input_shape)
-        model = Sequential()
-        model.add(base)
-        model.add(GlobalAveragePooling2D())
-        model.add(Dense(256, activation='relu'))
-        model.add(Dropout(self.dropout_rate))
-
-        return model
-
-    def siamese_model(self):
-        base = self.base_model()
-
-        first_input = Input(shape=self.input_shape)
-        second_input = Input(shape=self.input_shape)
-
-        first_processed = base(first_input)
-        second_processed = base(second_input)
-
-        distance = Lambda(lambda tensors: K.sqrt(K.sum(K.square(tensors[0] - tensors[1]), axis=1, keepdims=True)))(
-            [first_processed, second_processed])
-        output = Dense(1, activation='sigmoid')(distance)
-
-        model = Model(inputs=[first_input, second_input], outputs=output)
-        model.compile(optimizer=Adam(learning_rate=0.0001), loss='binary_crossentropy', metrics=['accuracy'])
-
-        return model
-
     def build_model(self):
-        return self.siamese_model()
+        base_model = ResNet50(weights='imagenet', include_top=False, input_shape=self.input_shape)
 
-    def train(self, train_data, val_data, epochs=10, steps_per_epoch=None, validation_steps=None):
-        log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch='500,520')
+        # Setting base_model.trainable = False ensures that the pretrained weights are not updated during training,
+        # preserving the learned features and reducing computational overhead.
+        base_model.trainable = False
 
-        checkpoint = tf.keras.callbacks.ModelCheckpoint(
+        pooled_output = base_model.output
+        pooled_output = GlobalAveragePooling2D()(pooled_output)
+
+        feature_extractor = Model(inputs=base_model.input, outputs=pooled_output, name='Feature_Extractor')
+
+        input_image1 = Input(shape=self.input_shape, name='Image_Input_1')
+        input_image2 = Input(shape=self.input_shape, name='Image_Input_2')
+
+        features_image1 = feature_extractor(input_image1)
+        features_image2 = feature_extractor(input_image2)
+
+        difference = Lambda(lambda tensors: K.abs(tensors[0] - tensors[1]), name='Feature_Difference')([features_image1, features_image2])
+        similarity_score = Dense(1, activation='sigmoid', name='Similarity_Output')(difference)
+
+        model = Model(inputs=[input_image1, input_image2], outputs=similarity_score, name='Simplified_Siamese_Network')
+        optimizer = Adam(learning_rate=self.learning_rate)
+        model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+        model.summary()
+
+        return model
+
+    def get_callbacks(self, log_dir='logs/fit'):
+        log_dir = os.path.join(log_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        tensorboard = TensorBoard(log_dir=log_dir, histogram_freq=1, update_freq='epoch')
+
+        checkpoint = ModelCheckpoint(
             'model.weights.h5',
             monitor='val_accuracy',
             save_weights_only=True,
             verbose=1
         )
 
-        start = time.time()
-        history = self.model.fit(
-            train_data,
+        return [tensorboard, checkpoint]
+
+    def train(self, model, train_generator, val_generator, epochs=50):
+        callbacks = self.get_callbacks()
+
+        history = model.fit(
+            train_generator,
             epochs=epochs,
-            validation_data=val_data,
-            validation_steps=validation_steps,
-            callbacks=[checkpoint, tensorboard_callback],
+            validation_data=val_generator,
+            callbacks=callbacks,
             verbose=1
         )
 
-        end = time.time()
-        training_time = end - start
-        print(f"Training completed in {training_time:.2f} seconds.")
-
         return history
 
-    def save_weights(self, filepath='model.weights.h5'):
+    def save_model(self, filepath='models/final_siamese_model.h5'):
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        self.model.save(filepath)
         self.model.save_weights(filepath)
+        print(f"Model saved to {filepath}")
 
-    def load_weights(self, filepath='model.weights.h5'):
-        self.model.load_weights(filepath)
+    def load_model(self, filepath='models/best_model.h5'):
+        from tensorflow.keras.models import load_model
+        self.model = load_model(filepath, compile=False)
 
-    def preprocess_image(self, image):
-        image = cv2.resize(image, self.input_shape[:2])
-        image = np.expand_dims(image, axis=0)
-        return image / 255.0
-
-    def predict(self, image1, image2):
-        img1 = self.preprocess_image(image1)
-        img2 = self.preprocess_image(image2)
-
-        return self.model.predict([img1, img2])
-
-    def evaluate(self, test_data):
-        loss, accuracy = self.model.evaluate(test_data)
-        print(f"Test loss: {loss:.4f}\nTest accuracy: {accuracy:.4f}")
+        optimizer = Adam(learning_rate=self.learning_rate)
+        self.model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+        print(f"Model loaded from {filepath}")
