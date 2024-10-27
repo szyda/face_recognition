@@ -2,126 +2,166 @@ import os
 import cv2
 import numpy as np
 import random
+from itertools import combinations
+from tensorflow.keras.utils import Sequence
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.applications.resnet50 import preprocess_input
 
-class DataProcessor:
-    def __init__(self, data_directory="dataset", image_size=(224, 224), batch_size=32, validation_split=0.2):
+
+class DataSequenceGenerator(Sequence):
+    def __init__(self,
+                 data_directory,
+                 image_size=(224, 224),
+                 batch_size=32,
+                 num_pairs_per_identity=60,
+                 validation_split=0.3,
+                 augment=False,
+                 shuffle=True,
+                 mode='train',  # 'train' or 'validation'
+                 num_identities_to_use=None,
+                 num_images_per_identity=None):
+        assert mode in ['train', 'validation'], "mode must be 'train' or 'validation'"
+        self.mode = mode
         self.data_directory = data_directory
         self.image_size = image_size
         self.batch_size = batch_size
+        self.num_pairs_per_identity = num_pairs_per_identity
         self.validation_split = validation_split
+        self.augment = augment if mode == 'train' else False
+        self.shuffle = shuffle
+        self.num_identities_to_use = num_identities_to_use
+        self.num_images_per_identity = num_images_per_identity
 
-        self.train_images = []
-        self.train_labels = []
-        self.val_images = []
-        self.val_labels = []
+        self.identity_to_images = self._load_data()
+        self.train_identities, self.val_identities = self._split_identities()
 
-        self.load_and_split_data()
-        self.train_pairs = []
-        self.train_labels_pair = []
-        self.val_pairs = []
-        self.val_labels_pair = []
+        if self.mode == 'train':
+            self.pairs, self.labels = self._generate_pairs(self.train_identities)
+        else:
+            self.pairs, self.labels = self._generate_pairs(self.val_identities, training=False)
 
-        self.generate_pairs()
+        self.indices = np.arange(len(self.pairs))
 
-    def load_data(self):
-        images = []
-        labels = []
-        label_to_images = {}
+        if self.augment:
+            self.datagen = ImageDataGenerator(
+                rotation_range=20,
+                width_shift_range=0.1,
+                height_shift_range=0.1,
+                shear_range=0.1,
+                zoom_range=0.15,
+                horizontal_flip=True,
+                brightness_range=[0.8, 1.2],
+                fill_mode='nearest'
+            )
+        else:
+            self.datagen = None
 
-        for identity in os.listdir(self.data_directory):
+        self.on_epoch_end()
+
+    def _load_data(self):
+        identity_to_images = {}
+        identities = os.listdir(self.data_directory)
+
+        if self.num_identities_to_use:
+            identities = identities[:self.num_identities_to_use]
+
+        for identity in identities:
             identity_dir = os.path.join(self.data_directory, identity)
             if os.path.isdir(identity_dir):
-                img_files = [os.path.join(identity_dir, f) for f in os.listdir(identity_dir) if f.endswith('.png')]
-                labels.extend([identity] * len(img_files))
-                images.extend(img_files)
-                label_to_images[identity] = img_files
+                img_files = [os.path.join(identity_dir, f)
+                             for f in os.listdir(identity_dir)
+                             if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                if len(img_files) >= 2:
+                    identity_to_images[identity] = img_files[:self.num_images_per_identity]
+        print(f"Loaded {len(identity_to_images)} identities from {self.data_directory}.")
 
-        return images, labels, label_to_images
+        return identity_to_images
 
-    def load_and_split_data(self):
-        images, labels, label_to_images = self.load_data()
+    def _split_identities(self):
+        identities = list(self.identity_to_images.keys())
+        random.shuffle(identities)
+        num_train = int(len(identities) * (1 - self.validation_split))
+        train_identities = identities[:num_train]
+        val_identities = identities[num_train:]
+        print(f"Split into {len(train_identities)} training and {len(val_identities)} validation identities.")
 
-        # split into train and validation
-        for label, img_list in label_to_images.items():
-            num_images = len(img_list)
-            random.shuffle(img_list)
-            num_val = int(num_images * self.validation_split)
-            num_train = num_images - num_val
+        return train_identities, val_identities
 
-            self.train_images.extend(img_list[:num_train])
-            self.train_labels.extend([label] * num_train)
-            self.val_images.extend(img_list[num_train:])
-            self.val_labels.extend([label] * num_val)
-
-        print(f"Training set: {len(self.train_images)} images")
-        print(f"Validation set: {len(self.val_images)} images")
-
-    def build_label_to_images(self, images, labels):
-        label_to_images = {}
-        for img, label in zip(images, labels):
-            label_to_images.setdefault(label, []).append(img)
-        return label_to_images
-
-    def generate_pairs(self, num_pairs_per_identity=20):
-        label_to_images_train = self.build_label_to_images(self.train_images, self.train_labels)
-        self.train_pairs, self.train_labels_pair = self.create_pairs(label_to_images_train, num_pairs_per_identity)
-
-        label_to_images_val = self.build_label_to_images(self.val_images, self.val_labels)
-        self.val_pairs, self.val_labels_pair = self.create_pairs(label_to_images_val, num_pairs_per_identity)
-
-    def create_pairs(self, label_to_images, num_pairs_per_identity):
+    def _generate_pairs(self, identities, training=True):
         positive_pairs = []
         negative_pairs = []
+        identity_to_images = {identity: self.identity_to_images[identity] for identity in identities}
+        all_identities = list(identity_to_images.keys())
 
-        # positive pairs
-        for label, img_list in label_to_images.items():
-            if len(img_list) >= 2:
-                pairs = list(zip(img_list[:-1], img_list[1:]))
-                random.shuffle(pairs)
-                positive_pairs.extend(pairs[:num_pairs_per_identity])
+        for identity, images in identity_to_images.items():
+            possible_pairs = list(combinations(images, 2))
+            random.shuffle(possible_pairs)
+            selected_pairs = possible_pairs[:self.num_pairs_per_identity]
+            positive_pairs.extend(selected_pairs)
 
-        # negative pairs
-        labels_list = list(label_to_images.keys())
-        num_negative_pairs = len(positive_pairs)
-        while len(negative_pairs) < num_negative_pairs:
-            label1, label2 = random.sample(labels_list, 2)
-            img1 = random.choice(label_to_images[label1])
-            img2 = random.choice(label_to_images[label2])
+        num_positive = len(positive_pairs)
+        while len(negative_pairs) < num_positive:
+            id1, id2 = random.sample(all_identities, 2)
+            img1 = random.choice(identity_to_images[id1])
+            img2 = random.choice(identity_to_images[id2])
             negative_pairs.append((img1, img2))
 
         pairs = positive_pairs + negative_pairs
-        labels_pair = [1] * len(positive_pairs) + [0] * len(negative_pairs)
+        labels = [1] * len(positive_pairs) + [0] * len(negative_pairs)
 
-        combined = list(zip(pairs, labels_pair))
+        combined = list(zip(pairs, labels))
         random.shuffle(combined)
-        pairs[:], labels_pair[:] = zip(*combined)
+        pairs[:], labels[:] = zip(*combined)
 
-        print(f"Generated {len(positive_pairs)} positive pairs and {len(negative_pairs)} negative pairs.")
-        return pairs, labels_pair
+        set_type = "training" if training else "validation"
+        print(f"Generated {len(positive_pairs)} positive and {len(negative_pairs)} negative pairs for {set_type}.")
 
-    def data_generator(self, pairs, labels_pair):
-        num_samples = len(pairs)
-        while True:
-            for offset in range(0, num_samples, self.batch_size):
-                batch_pairs = pairs[offset:offset+self.batch_size]
-                batch_labels = labels_pair[offset:offset+self.batch_size]
+        return list(pairs), list(labels)
 
-                img1_batch = []
-                img2_batch = []
-                for img1_path, img2_path in batch_pairs:
-                    img1 = cv2.imread(img1_path)
-                    img2 = cv2.imread(img2_path)
-                    if img1 is None or img2 is None:
-                        continue
-                    img1 = cv2.resize(img1, self.image_size)
-                    img2 = cv2.resize(img2, self.image_size)
-                    img1 = img1 / 255.0
-                    img2 = img2 / 255.0
-                    img1_batch.append(img1)
-                    img2_batch.append(img2)
+    def __len__(self):
+        return int(np.ceil(len(self.pairs) / self.batch_size))
 
-                img1_batch = np.array(img1_batch)
-                img2_batch = np.array(img2_batch)
-                batch_labels_array = np.array(batch_labels[:len(img1_batch)])
+    def __getitem__(self, index):
+        batch_indices = self.indices[index * self.batch_size:(index + 1) * self.batch_size]
+        batch_pairs = [self.pairs[i] for i in batch_indices]
+        batch_labels = [self.labels[i] for i in batch_indices]
 
-                yield (img1_batch, img2_batch), batch_labels_array
+        img1_batch = []
+        img2_batch = []
+        valid_labels = []
+
+        for (img1_path, img2_path), label in zip(batch_pairs, batch_labels):
+            try:
+                img1 = self._preprocess_image(img1_path)
+                img2 = self._preprocess_image(img2_path)
+            except ValueError as e:
+                print(e)
+                continue
+
+            if self.augment and self.datagen:
+                img1 = self.datagen.random_transform(img1)
+                img2 = self.datagen.random_transform(img2)
+
+            img1_batch.append(img1)
+            img2_batch.append(img2)
+            valid_labels.append(label)
+
+        img1_batch = np.array(img1_batch)
+        img2_batch = np.array(img2_batch)
+        batch_labels_array = np.array(valid_labels)
+
+        return (img1_batch, img2_batch), batch_labels_array
+
+    def on_epoch_end(self):
+        if self.shuffle:
+            np.random.shuffle(self.indices)
+
+    def _preprocess_image(self, image_path):
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Unable to read image at {image_path}")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.resize(image, self.image_size)
+        image = preprocess_input(image)
+
+        return image
