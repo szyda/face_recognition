@@ -19,8 +19,11 @@ class DataSequenceGenerator(Sequence):
                  shuffle=True,
                  mode='train',  # 'train' or 'validation'
                  num_identities_to_use=None,
-                 num_images_per_identity=None):
-        assert mode in ['train', 'validation'], "mode must be 'train' or 'validation'"
+                 num_images_per_identity=None,
+                 **kwargs):
+
+        super().__init__(**kwargs)
+
         self.mode = mode
         self.data_directory = data_directory
         self.image_size = image_size
