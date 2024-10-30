@@ -47,11 +47,11 @@ class DataSequenceGenerator(Sequence):
 
         if self.augment:
             self.datagen = ImageDataGenerator(
-                rotation_range=20,
-                width_shift_range=0.1,
-                height_shift_range=0.1,
-                shear_range=0.1,
-                zoom_range=0.15,
+                rotation_range=40,
+                width_shift_range=0.4,
+                height_shift_range=0.4,
+                shear_range=0.4,
+                zoom_range=0.4,
                 horizontal_flip=True,
                 brightness_range=[0.8, 1.2],
                 fill_mode='nearest'
@@ -142,8 +142,9 @@ class DataSequenceGenerator(Sequence):
                 continue
 
             if self.augment and self.datagen:
-                img1 = self.datagen.random_transform(img1)
-                img2 = self.datagen.random_transform(img2)
+                seed = random.randint(0, 100000)
+                img1 = self.datagen.random_transform(img1, seed=seed)
+                img2 = self.datagen.random_transform(img2, seed=seed)
 
             img1_batch.append(img1)
             img2_batch.append(img2)
