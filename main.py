@@ -8,10 +8,10 @@ from face_recognizer import FaceRecognition
 def main():
     data_directory = "dataset"
     image_size = (224, 224)
-    batch_size = 32
+    batch_size = 16
     augment = True
     shuffle = True
-    validation_split = 0.3
+    validation_split = 0.35
     num_identities_to_use = 17
     num_images_per_identity = 72
     num_pairs_per_identity = 500
@@ -43,7 +43,7 @@ def main():
     )
 
     face_recognizer = FaceRecognition(input_shape=image_size + (3,), learning_rate=0.0001, dropout_rate=0.4)
-    history = face_recognizer.train(model=face_recognizer.model, train_generator=train_generator, val_generator=val_generator, epochs=20)
+    history = face_recognizer.train(model=face_recognizer.model, train_generator=train_generator, val_generator=val_generator, epochs=30)
 
     face_recognizer.save_model(filepath='celebs-500.weights.h5')
 
