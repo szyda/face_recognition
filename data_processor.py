@@ -8,7 +8,11 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications.resnet50 import preprocess_input
 
 
-class DataSequenceGenerator(Sequence):
+class DataProcessor(Sequence):
+    _identity_to_images = None
+    _train_identities = None
+    _val_identities = None
+
     def __init__(self,
                  data_directory,
                  image_size=(224, 224),
@@ -17,7 +21,7 @@ class DataSequenceGenerator(Sequence):
                  validation_split=0.3,
                  augment=False,
                  shuffle=True,
-                 mode='train',  # 'train' or 'validation'
+                 mode='train',
                  num_identities_to_use=None,
                  num_images_per_identity=None,
                  **kwargs):
@@ -35,23 +39,29 @@ class DataSequenceGenerator(Sequence):
         self.num_identities_to_use = num_identities_to_use
         self.num_images_per_identity = num_images_per_identity
 
-        self.identity_to_images = self._load_data()
-        self.train_identities, self.val_identities = self._split_identities()
+        if DataProcessor._identity_to_images is None:
+            DataProcessor._identity_to_images = self._load_data()
+            DataProcessor._train_identities, DataProcessor._val_identities = self._split_identities()
+
+        self.identity_to_images = DataProcessor._identity_to_images
 
         if self.mode == 'train':
-            self.pairs, self.labels = self._generate_pairs(self.train_identities)
+            identities = DataProcessor._train_identities
         else:
-            self.pairs, self.labels = self._generate_pairs(self.val_identities, training=False)
+            identities = DataProcessor._val_identities
+
+        self.identity_to_images = {identity: self.identity_to_images[identity] for identity in identities}
+        self.pairs, self.labels = self._generate_pairs(identities, training=self.mode == 'train')
 
         self.indices = np.arange(len(self.pairs))
 
         if self.augment:
             self.datagen = ImageDataGenerator(
-                rotation_range=40,
-                width_shift_range=0.4,
-                height_shift_range=0.4,
-                shear_range=0.4,
-                zoom_range=0.4,
+                rotation_range=30,
+                width_shift_range=0.3,
+                height_shift_range=0.3,
+                shear_range=0.3,
+                zoom_range=0.3,
                 horizontal_flip=True,
                 brightness_range=[0.8, 1.2],
                 fill_mode='nearest'
@@ -60,6 +70,16 @@ class DataSequenceGenerator(Sequence):
             self.datagen = None
 
         self.on_epoch_end()
+
+    @staticmethod
+    def preprocess_image(image_path, image_size=(224, 224)):
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Unable to read image at {image_path}")
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.resize(image, image_size)
+        image = preprocess_input(image)
+        return image
 
     def _load_data(self):
         identity_to_images = {}
@@ -81,7 +101,8 @@ class DataSequenceGenerator(Sequence):
         return identity_to_images
 
     def _split_identities(self):
-        identities = list(self.identity_to_images.keys())
+        # Use the class-level _identity_to_images instead of the instance-level one
+        identities = list(DataProcessor._identity_to_images.keys())
         random.shuffle(identities)
         num_train = int(len(identities) * (1 - self.validation_split))
         train_identities = identities[:num_train]
@@ -99,7 +120,7 @@ class DataSequenceGenerator(Sequence):
         for identity, images in identity_to_images.items():
             possible_pairs = list(combinations(images, 2))
             random.shuffle(possible_pairs)
-            selected_pairs = possible_pairs[:self.num_pairs_per_identity]
+            selected_pairs = possible_pairs[:min(self.num_pairs_per_identity, len(possible_pairs))]
             positive_pairs.extend(selected_pairs)
 
         num_positive = len(positive_pairs)
@@ -135,8 +156,8 @@ class DataSequenceGenerator(Sequence):
 
         for (img1_path, img2_path), label in zip(batch_pairs, batch_labels):
             try:
-                img1 = self._preprocess_image(img1_path)
-                img2 = self._preprocess_image(img2_path)
+                img1 = DataProcessor.preprocess_image(img1_path, self.image_size)
+                img2 = DataProcessor.preprocess_image(img2_path, self.image_size)
             except ValueError as e:
                 print(e)
                 continue
@@ -159,13 +180,3 @@ class DataSequenceGenerator(Sequence):
     def on_epoch_end(self):
         if self.shuffle:
             np.random.shuffle(self.indices)
-
-    def _preprocess_image(self, image_path):
-        image = cv2.imread(image_path)
-        if image is None:
-            raise ValueError(f"Unable to read image at {image_path}")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, self.image_size)
-        image = preprocess_input(image)
-
-        return image
