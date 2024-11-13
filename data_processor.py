@@ -57,13 +57,13 @@ class DataProcessor(Sequence):
 
         if self.augment:
             self.datagen = ImageDataGenerator(
-                rotation_range=30,
-                width_shift_range=0.3,
-                height_shift_range=0.3,
-                shear_range=0.3,
-                zoom_range=0.3,
+                rotation_range=40,
+                width_shift_range=0.4,
+                height_shift_range=0.4,
+                shear_range=0.4,
+                zoom_range=0.4,
                 horizontal_flip=True,
-                brightness_range=[0.8, 1.2],
+                brightness_range=[0.7, 1.5],
                 fill_mode='nearest'
             )
         else:
@@ -101,7 +101,6 @@ class DataProcessor(Sequence):
         return identity_to_images
 
     def _split_identities(self):
-        # Use the class-level _identity_to_images instead of the instance-level one
         identities = list(DataProcessor._identity_to_images.keys())
         random.shuffle(identities)
         num_train = int(len(identities) * (1 - self.validation_split))
@@ -118,14 +117,23 @@ class DataProcessor(Sequence):
         all_identities = list(identity_to_images.keys())
 
         for identity, images in identity_to_images.items():
+            if len(images) < 2:
+                continue
+
             possible_pairs = list(combinations(images, 2))
             random.shuffle(possible_pairs)
             selected_pairs = possible_pairs[:min(self.num_pairs_per_identity, len(possible_pairs))]
             positive_pairs.extend(selected_pairs)
 
         num_positive = len(positive_pairs)
+        if num_positive == 0:
+            print("Warning: No positive pairs generated. Check dataset.")
+            return [], []
+
         while len(negative_pairs) < num_positive:
             id1, id2 = random.sample(all_identities, 2)
+            if id1 == id2:
+                continue
             img1 = random.choice(identity_to_images[id1])
             img2 = random.choice(identity_to_images[id2])
             negative_pairs.append((img1, img2))
@@ -163,9 +171,8 @@ class DataProcessor(Sequence):
                 continue
 
             if self.augment and self.datagen:
-                seed = random.randint(0, 100000)
-                img1 = self.datagen.random_transform(img1, seed=seed)
-                img2 = self.datagen.random_transform(img2, seed=seed)
+                img1 = self.datagen.random_transform(img1)
+                img2 = self.datagen.random_transform(img2)
 
             img1_batch.append(img1)
             img2_batch.append(img2)

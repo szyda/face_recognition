@@ -8,13 +8,13 @@ from face_recognizer import FaceRecognition
 def main():
     data_directory = "dataset"
     image_size = (224, 224)
-    batch_size = 16
+    batch_size = 32
     augment = True
     shuffle = True
     validation_split = 0.3
     num_identities_to_use = 17
     num_images_per_identity = 72
-    num_pairs_per_identity = 200
+    num_pairs_per_identity = 1500
 
     train_generator = DataProcessor(
         data_directory=data_directory,
@@ -40,7 +40,7 @@ def main():
         num_images_per_identity=num_images_per_identity
     )
 
-    face_recognizer = FaceRecognition(input_shape=image_size + (3,), learning_rate=0.0001, dropout_rate=0.4)
+    face_recognizer = FaceRecognition(input_shape=image_size + (3,), learning_rate=0.00005, dropout_rate=0.3)
     history = face_recognizer.train(
         model=face_recognizer.model,
         train_generator=train_generator,
@@ -50,10 +50,10 @@ def main():
 
     face_recognizer.save_model(filepath='celebs.weights.h5')
 
-    print("Saving embeddings tests...")
-    face_recognizer.save_embeddings(
+    print("Saving features ...")
+    face_recognizer.save_features(
         known_images_dir='dataset',
-        embeddings_filepath='embeddings/celebs_embeddings.npy',
+        features_path='embeddings/celebs_embeddings.npy',
         labels_filepath='embeddings/celebs_labels.npy'
     )
 
