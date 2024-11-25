@@ -5,65 +5,41 @@ import random
 from itertools import combinations
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications.resnet50 import preprocess_input
-
+from tensorflow.keras.applications.vgg16 import preprocess_input
 
 class DataProcessor(Sequence):
-    _identity_to_images = None
-    _train_identities = None
-    _val_identities = None
-
     def __init__(self,
-                 data_directory,
+                 identity_to_images,
+                 identities,
                  image_size=(224, 224),
                  batch_size=32,
                  num_pairs_per_identity=60,
-                 validation_split=0.3,
                  augment=False,
                  shuffle=True,
                  mode='train',
-                 num_identities_to_use=None,
-                 num_images_per_identity=None,
                  **kwargs):
 
         super().__init__(**kwargs)
-
         self.mode = mode
-        self.data_directory = data_directory
         self.image_size = image_size
         self.batch_size = batch_size
         self.num_pairs_per_identity = num_pairs_per_identity
-        self.validation_split = validation_split
         self.augment = augment if mode == 'train' else False
         self.shuffle = shuffle
-        self.num_identities_to_use = num_identities_to_use
-        self.num_images_per_identity = num_images_per_identity
 
-        if DataProcessor._identity_to_images is None:
-            DataProcessor._identity_to_images = self._load_data()
-            DataProcessor._train_identities, DataProcessor._val_identities = self._split_identities()
-
-        self.identity_to_images = DataProcessor._identity_to_images
-
-        if self.mode == 'train':
-            identities = DataProcessor._train_identities
-        else:
-            identities = DataProcessor._val_identities
-
-        self.identity_to_images = {identity: self.identity_to_images[identity] for identity in identities}
-        self.pairs, self.labels = self._generate_pairs(identities, training=self.mode == 'train')
-
+        self.identity_to_images = {identity: identity_to_images[identity] for identity in identities}
+        self.pairs, self.labels = self._generate_pairs(identities)
         self.indices = np.arange(len(self.pairs))
 
         if self.augment:
             self.datagen = ImageDataGenerator(
-                rotation_range=40,
-                width_shift_range=0.4,
-                height_shift_range=0.4,
-                shear_range=0.4,
-                zoom_range=0.4,
+                rotation_range=20,
+                width_shift_range=0.2,
+                height_shift_range=0.2,
+                shear_range=0.2,
+                zoom_range=0.2,
                 horizontal_flip=True,
-                brightness_range=[0.7, 1.5],
+                brightness_range=[0.8, 1.2],
                 fill_mode='nearest'
             )
         else:
@@ -76,50 +52,51 @@ class DataProcessor(Sequence):
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"Unable to read image at {image_path}")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image = cv2.resize(image, image_size)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image = preprocess_input(image)
         return image
 
-    def _load_data(self):
+    @staticmethod
+    def load_data(data_directory, num_identities_to_use=None, num_images_per_identity=None):
         identity_to_images = {}
-        identities = os.listdir(self.data_directory)
+        identities = os.listdir(data_directory)
 
-        if self.num_identities_to_use:
-            identities = identities[:self.num_identities_to_use]
+        if num_identities_to_use:
+            identities = identities[:num_identities_to_use]
 
         for identity in identities:
-            identity_dir = os.path.join(self.data_directory, identity)
+            identity_dir = os.path.join(data_directory, identity)
             if os.path.isdir(identity_dir):
                 img_files = [os.path.join(identity_dir, f)
                              for f in os.listdir(identity_dir)
                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
                 if len(img_files) >= 2:
-                    identity_to_images[identity] = img_files[:self.num_images_per_identity]
-        print(f"Loaded {len(identity_to_images)} identities from {self.data_directory}.")
-
+                    if num_images_per_identity:
+                        img_files = img_files[:num_images_per_identity]
+                    identity_to_images[identity] = img_files
         return identity_to_images
 
-    def _split_identities(self):
-        identities = list(DataProcessor._identity_to_images.keys())
+    @staticmethod
+    def split_identities(identities, validation_split):
+        identities = list(identities)
+        random.seed(42)
         random.shuffle(identities)
-        num_train = int(len(identities) * (1 - self.validation_split))
+        num_train = int(len(identities) * (1 - validation_split))
         train_identities = identities[:num_train]
         val_identities = identities[num_train:]
-        print(f"Split into {len(train_identities)} training and {len(val_identities)} validation identities.")
-
         return train_identities, val_identities
 
-    def _generate_pairs(self, identities, training=True):
+    def _generate_pairs(self, identities):
         positive_pairs = []
         negative_pairs = []
         identity_to_images = {identity: self.identity_to_images[identity] for identity in identities}
         all_identities = list(identity_to_images.keys())
 
+        # positive pairs
         for identity, images in identity_to_images.items():
             if len(images) < 2:
                 continue
-
             possible_pairs = list(combinations(images, 2))
             random.shuffle(possible_pairs)
             selected_pairs = possible_pairs[:min(self.num_pairs_per_identity, len(possible_pairs))]
@@ -130,6 +107,7 @@ class DataProcessor(Sequence):
             print("Warning: No positive pairs generated. Check dataset.")
             return [], []
 
+        # negative pairs
         while len(negative_pairs) < num_positive:
             id1, id2 = random.sample(all_identities, 2)
             if id1 == id2:
@@ -145,7 +123,7 @@ class DataProcessor(Sequence):
         random.shuffle(combined)
         pairs[:], labels[:] = zip(*combined)
 
-        set_type = "training" if training else "validation"
+        set_type = "training" if self.mode == 'train' else "validation"
         print(f"Generated {len(positive_pairs)} positive and {len(negative_pairs)} negative pairs for {set_type}.")
 
         return list(pairs), list(labels)
@@ -164,8 +142,8 @@ class DataProcessor(Sequence):
 
         for (img1_path, img2_path), label in zip(batch_pairs, batch_labels):
             try:
-                img1 = DataProcessor.preprocess_image(img1_path, self.image_size)
-                img2 = DataProcessor.preprocess_image(img2_path, self.image_size)
+                img1 = self.preprocess_image(img1_path, self.image_size)
+                img2 = self.preprocess_image(img2_path, self.image_size)
             except ValueError as e:
                 print(e)
                 continue
