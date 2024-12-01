@@ -56,12 +56,6 @@ def main():
     face_recognizer.save_model()
     print("Training complete.")
 
-    # face_recognizer.model.load_weights(file_path)
-    # print(f"Weights loaded from {file_path}")
-
-    face_recognizer.evaluate(val_generator)
-    print("Evaluating complete.")
-
 if __name__ == "__main__":
     main()
 

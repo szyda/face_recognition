@@ -1,11 +1,11 @@
-# tests based on celebrity image face dataset
+# tests based on digiface-1m P2 dataset
 import os
 from face_recognizer import FaceRecognition
 from data_processor import DataProcessor
 
 
 def main():
-    data_directory = "celebs"
+    data_directory = "digiface"
     image_size = (224, 224)
     batch_size = 32
     num_pairs_per_identity = 50
