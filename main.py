@@ -44,7 +44,7 @@ def main():
         mode='validation'
     )
 
-    file_path = "model.weights.h5"
+    file_path = "1-december-model.weights.h5"
 
     face_recognizer = FaceRecognition(input_shape=image_size + (3,), learning_rate=0.00005, dropout_rate=0.2, file_path=file_path)
     history = face_recognizer.train(

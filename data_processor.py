@@ -46,22 +46,21 @@ class DataProcessor(Sequence):
             self.datagen = None
 
     @staticmethod
-    def preprocess_image(image_path, image_size=(224, 224)):
-        def preprocess_image(image_input, image_size=(224, 224)):
-            if isinstance(image_input, str):
-                image = cv2.imread(image_input)
-                if image is None:
-                    raise ValueError(f"Unable to read image at {image_input}")
-            elif isinstance(image_input, np.ndarray):
-                image = image_input
-            else:
-                raise TypeError("Input must be a file path or an image array.")
+    def preprocess_image(image_input, image_size=(224, 224)):
+        if isinstance(image_input, str):
+            image = cv2.imread(image_input)
+            if image is None:
+                raise ValueError(f"Unable to read image at {image_input}")
+        elif isinstance(image_input, np.ndarray):
+            image = image_input
+        else:
+            raise TypeError("Input must be a file path or an image array.")
 
-            image = cv2.resize(image, image_size)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image = preprocess_input(image)
+        image = cv2.resize(image, image_size)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = preprocess_input(image)
 
-            return image
+        return image
 
     @staticmethod
     def load_data(data_directory, num_identities_to_use=None, num_images_per_identity=None):
