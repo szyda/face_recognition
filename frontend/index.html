@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Face Recognition</title>
+    <style>
+        #videoElement {
+            width: 640px;
+            height: 480px;
+            background-color: #666;
+        }
+        #resultMessage {
+            font-size: 2em;
+            margin-top: 20px;
+            display: none;
+        }
+        #resultMessage.authorized {
+            color: green;
+        }
+        #resultMessage.unauthorized {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Face Recognition Verification</h1>
+    <video autoplay="true" id="videoElement"></video>
+    <br>
+    <button id="verifyButton">Verify Identity</button>
+    <div id="resultMessage"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
