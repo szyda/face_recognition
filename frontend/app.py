@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from face_recognizer import FaceRecognition
+from data_processor import DataProcessor
 import base64
 import numpy as np
 import cv2
@@ -22,23 +23,18 @@ def verify():
     header, encoded = image_data.split(",", 1)
     decoded_bytes = base64.b64decode(encoded)
     nparr = np.frombuffer(decoded_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = cv2.resize(img, (224, 224))
+    img = DataProcessor.preprocess_image(img_array, image_size=(224, 224))
     img = np.expand_dims(img, axis=0)
-    img = img / 255.0
 
     reference_image_path = 'reference.jpg'
-    ref_img = cv2.imread(reference_image_path)
-    ref_img = cv2.cvtColor(ref_img, cv2.COLOR_BGR2RGB)
-    ref_img = cv2.resize(ref_img, (224, 224))
+    ref_img = DataProcessor.preprocess_image(reference_image_path, image_size=(224, 224))
     ref_img = np.expand_dims(ref_img, axis=0)
-    ref_img = ref_img / 255.0
 
     prediction = face_recognizer.model.predict([img, ref_img])[0][0]
 
-    threshold = 0.7
+    threshold = 0.65
     if prediction >= threshold:
         result = {'status': 'authorized'}
     else:
