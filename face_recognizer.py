@@ -8,6 +8,16 @@ from tensorflow.keras.applications import VGG16
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 import tensorflow.keras.backend as K
+from sklearn.metrics import (
+    confusion_matrix,
+    ConfusionMatrixDisplay,
+    classification_report,
+    roc_curve,
+    auc,
+    precision_recall_curve,
+)
+import matplotlib.pyplot as plt
+
 
 class FaceRecognition:
     def __init__(self, input_shape=(224, 224, 3), learning_rate=0.0001, dropout_rate=0.3):
@@ -67,40 +77,74 @@ class FaceRecognition:
             validation_data=val_generator,
             epochs=epochs,
             callbacks=callbacks,
-            verbose=1
+            verbose=1,
         )
         return history
 
-    def save_features(self, known_images_dir='dataset', features_path='known_features.npy',
-                      labels_filepath='known_labels.npy'):
-        known_features = []
-        known_labels = []
-
-        for person in os.listdir(known_images_dir):
-            person_dir = os.path.join(known_images_dir, person)
-            if os.path.isdir(person_dir):
-                for img_name in os.listdir(person_dir):
-                    img_path = os.path.join(person_dir, img_name)
-                    if os.path.isfile(img_path):
-                        try:
-                            img = DataProcessor.preprocess_image(img_path)
-                            img = np.expand_dims(img, axis=0)
-
-                            feature = self.feature_extractor.predict(img)
-                            known_features.append(feature.flatten())
-                            known_labels.append(person)
-
-                            print(f"Processed image {img_path}")
-
-                        except Exception as e:
-                            print(f"Failed to process image {img_path}: {e}")
-
-        known_features = np.array(known_features)
-
-        np.save(features_path, known_features)
-        np.save(labels_filepath, known_labels)
-        print(f"Features saved to {features_path} and labels saved to {labels_filepath}")
-
-    def save_model(self, filepath='celebs-500.weights.h5'):
+    def save_model(self, filepath="model.weights.h5"):
         self.model.save_weights(filepath)
         print(f"Weights saved to {filepath}")
+
+    def evaluate(self, validation_generator):
+        y_true = []
+        y_pred_scores = []
+
+        for batch in validation_generator:
+            (img1_batch, img2_batch), labels = batch
+
+            if len(labels) == 0 or img1_batch.size == 0 or img2_batch.size == 0:
+                continue
+
+            predictions = self.model.predict([img1_batch, img2_batch]).flatten()
+            y_true.extend(labels)
+            y_pred_scores.extend(predictions)
+
+        y_true = np.array(y_true)
+        y_pred_scores = np.array(y_pred_scores)
+
+        thresholds = [0.6, 0.65, 0.7, 0.75, 0.8, 0.9]
+        for threshold in thresholds:
+            y_pred = (y_pred_scores >= threshold).astype(int)
+
+            cm = confusion_matrix(y_true, y_pred)
+            print(f"\nThreshold: {threshold}")
+            print("Confusion Matrix:")
+            print(cm)
+
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Dissimilar", "Similar"])
+            disp.plot(cmap=plt.cm.Blues)
+            plt.title(f"Confusion Matrix at Threshold {threshold}")
+            plt.savefig(f'confusion_matrix_threshold_{threshold}.png')
+            plt.show()
+            plt.close()
+
+            print("\nClassification Report:")
+            print(
+                classification_report(
+                    y_true, y_pred, target_names=["Dissimilar", "Similar"]
+                )
+            )
+
+        fpr, tpr, thresholds_roc = roc_curve(y_true, y_pred_scores)
+        roc_auc = auc(fpr, tpr)
+        plt.figure()
+        plt.plot(fpr, tpr, label=f"ROC curve (AUC = {roc_auc:.2f})")
+        plt.plot([0, 1], [0, 1], "k--")
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curve")
+        plt.legend(loc="lower right")
+        plt.savefig('roc_curve.png')
+        plt.show()
+        plt.close()
+
+        precision, recall, thresholds_pr = precision_recall_curve(y_true, y_pred_scores)
+        plt.figure()
+        plt.plot(recall, precision, label="Precision-Recall curve")
+        plt.xlabel("Recall")
+        plt.ylabel("Precision")
+        plt.title("Precision-Recall Curve")
+        plt.legend(loc="lower left")
+        plt.savefig('precision_recall_curve.png')
+        plt.show()
+        plt.close()

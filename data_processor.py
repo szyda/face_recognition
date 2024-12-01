@@ -17,6 +17,7 @@ class DataProcessor(Sequence):
                  augment=False,
                  shuffle=True,
                  mode='train',
+                 seed=42,
                  **kwargs):
 
         super().__init__(**kwargs)
@@ -26,6 +27,7 @@ class DataProcessor(Sequence):
         self.num_pairs_per_identity = num_pairs_per_identity
         self.augment = augment if mode == 'train' else False
         self.shuffle = shuffle
+        self.seed = seed
 
         self.identity_to_images = {identity: identity_to_images[identity] for identity in identities}
         self.pairs, self.labels = self._generate_pairs(identities)
@@ -45,8 +47,6 @@ class DataProcessor(Sequence):
         else:
             self.datagen = None
 
-        self.on_epoch_end()
-
     @staticmethod
     def preprocess_image(image_path, image_size=(224, 224)):
         image = cv2.imread(image_path)
@@ -55,12 +55,13 @@ class DataProcessor(Sequence):
         image = cv2.resize(image, image_size)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image = preprocess_input(image)
+
         return image
 
     @staticmethod
     def load_data(data_directory, num_identities_to_use=None, num_images_per_identity=None):
         identity_to_images = {}
-        identities = os.listdir(data_directory)
+        identities = sorted(os.listdir(data_directory))
 
         if num_identities_to_use:
             identities = identities[:num_identities_to_use]
@@ -72,32 +73,35 @@ class DataProcessor(Sequence):
                              for f in os.listdir(identity_dir)
                              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
                 if len(img_files) >= 2:
+                    img_files = sorted(img_files)
                     if num_images_per_identity:
                         img_files = img_files[:num_images_per_identity]
                     identity_to_images[identity] = img_files
+
         return identity_to_images
 
     @staticmethod
     def split_identities(identities, validation_split):
         identities = list(identities)
-        random.seed(42)
-        random.shuffle(identities)
+        identities.sort()
         num_train = int(len(identities) * (1 - validation_split))
         train_identities = identities[:num_train]
         val_identities = identities[num_train:]
+
         return train_identities, val_identities
 
     def _generate_pairs(self, identities):
+        random.seed(self.seed)
         positive_pairs = []
         negative_pairs = []
         identity_to_images = {identity: self.identity_to_images[identity] for identity in identities}
         all_identities = list(identity_to_images.keys())
 
-        # positive pairs
         for identity, images in identity_to_images.items():
             if len(images) < 2:
                 continue
             possible_pairs = list(combinations(images, 2))
+            possible_pairs = sorted(possible_pairs)
             random.shuffle(possible_pairs)
             selected_pairs = possible_pairs[:min(self.num_pairs_per_identity, len(possible_pairs))]
             positive_pairs.extend(selected_pairs)
@@ -107,7 +111,6 @@ class DataProcessor(Sequence):
             print("Warning: No positive pairs generated. Check dataset.")
             return [], []
 
-        # negative pairs
         while len(negative_pairs) < num_positive:
             id1, id2 = random.sample(all_identities, 2)
             if id1 == id2:
@@ -120,7 +123,10 @@ class DataProcessor(Sequence):
         labels = [1] * len(positive_pairs) + [0] * len(negative_pairs)
 
         combined = list(zip(pairs, labels))
-        random.shuffle(combined)
+        combined = sorted(combined)
+        if self.shuffle:
+            random.shuffle(combined)
+
         pairs[:], labels[:] = zip(*combined)
 
         set_type = "training" if self.mode == 'train' else "validation"
@@ -129,9 +135,13 @@ class DataProcessor(Sequence):
         return list(pairs), list(labels)
 
     def __len__(self):
-        return int(np.ceil(len(self.pairs) / self.batch_size))
+        return int(np.ceil(len(self.indices) / self.batch_size))
 
     def __getitem__(self, index):
+        if index >= self.__len__():
+            print(f"Index {index} is out of range. Total batches: {self.__len__()}")
+            raise IndexError("Index out of range")
+
         batch_indices = self.indices[index * self.batch_size:(index + 1) * self.batch_size]
         batch_pairs = [self.pairs[i] for i in batch_indices]
         batch_labels = [self.labels[i] for i in batch_indices]
@@ -163,5 +173,7 @@ class DataProcessor(Sequence):
         return (img1_batch, img2_batch), batch_labels_array
 
     def on_epoch_end(self):
+        self.indices = np.arange(len(self.pairs))
         if self.shuffle:
+            random.seed(self.seed)
             np.random.shuffle(self.indices)
