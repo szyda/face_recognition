@@ -17,7 +17,6 @@ class DataProcessor(Sequence):
                  augment=False,
                  shuffle=True,
                  mode='train',
-                 seed=42,
                  **kwargs):
 
         super().__init__(**kwargs)
@@ -27,7 +26,6 @@ class DataProcessor(Sequence):
         self.num_pairs_per_identity = num_pairs_per_identity
         self.augment = augment if mode == 'train' else False
         self.shuffle = shuffle
-        self.seed = seed
 
         self.identity_to_images = {identity: identity_to_images[identity] for identity in identities}
         self.pairs, self.labels = self._generate_pairs(identities)
@@ -63,6 +61,7 @@ class DataProcessor(Sequence):
         identity_to_images = {}
         identities = sorted(os.listdir(data_directory))
 
+        # choose the number of identites (debug and development mode)
         if num_identities_to_use:
             identities = identities[:num_identities_to_use]
 
@@ -91,7 +90,6 @@ class DataProcessor(Sequence):
         return train_identities, val_identities
 
     def _generate_pairs(self, identities):
-        random.seed(self.seed)
         positive_pairs = []
         negative_pairs = []
         identity_to_images = {identity: self.identity_to_images[identity] for identity in identities}
@@ -108,7 +106,7 @@ class DataProcessor(Sequence):
 
         num_positive = len(positive_pairs)
         if num_positive == 0:
-            print("Warning: No positive pairs generated. Check dataset.")
+            print("Warning: No positive pairs generated.")
             return [], []
 
         while len(negative_pairs) < num_positive:
@@ -138,6 +136,7 @@ class DataProcessor(Sequence):
         return int(np.ceil(len(self.indices) / self.batch_size))
 
     def __getitem__(self, index):
+        # deubg
         if index >= self.__len__():
             print(f"Index {index} is out of range. Total batches: {self.__len__()}")
             raise IndexError("Index out of range")
@@ -175,5 +174,4 @@ class DataProcessor(Sequence):
     def on_epoch_end(self):
         self.indices = np.arange(len(self.pairs))
         if self.shuffle:
-            random.seed(self.seed)
             np.random.shuffle(self.indices)

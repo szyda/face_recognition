@@ -20,12 +20,13 @@ import matplotlib.pyplot as plt
 
 
 class FaceRecognition:
-    def __init__(self, input_shape=(224, 224, 3), learning_rate=0.0001, dropout_rate=0.3):
+    def __init__(self, input_shape=(224, 224, 3), learning_rate=0.0001, dropout_rate=0.3, file_path = 'model.weights.h5'):
         self.input_shape = input_shape
         self.learning_rate = learning_rate
         self.dropout_rate = dropout_rate
         self.feature_extractor = self.build_feature_extractor()
         self.model = self.build_model()
+        self.file_path = file_path
 
     def build_feature_extractor(self):
         base_model = VGG16(weights='imagenet', include_top=False, input_shape=self.input_shape)
@@ -61,7 +62,7 @@ class FaceRecognition:
         tensorboard = TensorBoard(log_dir=log_dir, histogram_freq=1, update_freq='epoch')
 
         checkpoint = ModelCheckpoint(
-            'model.weights.h5',
+            self.file_path,
             monitor='val_loss',
             save_weights_only=True,
             verbose=1,
@@ -70,9 +71,9 @@ class FaceRecognition:
         )
         return [tensorboard, checkpoint]
 
-    def train(self, model, train_generator, val_generator, epochs=30):
+    def train(self, train_generator, val_generator, epochs=30):
         callbacks = self.get_callbacks()
-        history = model.fit(
+        history = self.model.fit(
             train_generator,
             validation_data=val_generator,
             epochs=epochs,
@@ -81,9 +82,9 @@ class FaceRecognition:
         )
         return history
 
-    def save_model(self, filepath="model.weights.h5"):
-        self.model.save_weights(filepath)
-        print(f"Weights saved to {filepath}")
+    def save_model(self):
+        self.model.save_weights(self.file_path)
+        print(f"Weights saved to {self.file_path}")
 
     def evaluate(self, validation_generator):
         y_true = []
