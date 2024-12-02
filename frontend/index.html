@@ -3,30 +3,51 @@
 <head>
     <title>Face Recognition</title>
     <style>
+        #verificationPage {
+            text-align: center;
+        }
         #videoElement {
             width: 640px;
             height: 480px;
             background-color: #666;
         }
-        #resultMessage {
-            font-size: 2em;
+        #verifyButton {
             margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1em;
+        }
+
+        #resultPage {
             display: none;
+            text-align: center;
+            margin-top: 50px;
         }
-        #resultMessage.authorized {
-            color: green;
+        #resultText {
+            font-size: 3em;
+            margin-bottom: 20px;
         }
-        #resultMessage.unauthorized {
-            color: red;
+        #backButton {
+            padding: 10px 20px;
+            font-size: 1em;
+        }
+        /* General styles */
+        body {
+            font-family: Arial, sans-serif;
         }
     </style>
 </head>
 <body>
-    <h1>Face Recognition Verification</h1>
-    <video autoplay="true" id="videoElement"></video>
-    <br>
-    <button id="verifyButton">Verify Identity</button>
-    <div id="resultMessage"></div>
+    <div id="verificationPage">
+        <h1>Verification</h1>
+        <video autoplay="true" id="videoElement"></video>
+        <br>
+        <button id="verifyButton">Verify Identity</button>
+    </div>
+
+    <div id="resultPage">
+        <div id="resultText"></div>
+        <button id="backButton">Back</button>
+    </div>
 
     <script src="script.js"></script>
 </body>

@@ -1,12 +1,28 @@
 const video = document.getElementById('videoElement');
+const verificationPage = document.getElementById('verificationPage');
+const resultPage = document.getElementById('resultPage');
+const resultText = document.getElementById('resultText');
+const backButton = document.getElementById('backButton');
 
-navigator.mediaDevices.getUserMedia({ video: true })
-    .then((stream) => {
-        video.srcObject = stream;
-    })
-    .catch((error) => {
-        console.error("Error accessing the camera: ", error);
-    });
+function startCamera() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => {
+            video.srcObject = stream;
+        })
+        .catch((error) => {
+            console.error("Error accessing the camera: ", error);
+            alert("Error accessing the camera. Please allow camera access and try again.");
+        });
+}
+
+function stopCamera() {
+    if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+    }
+}
+
+startCamera();
 
 document.getElementById('verifyButton').addEventListener('click', () => {
     const canvas = document.createElement('canvas');
@@ -28,23 +44,43 @@ function verifyIdentity(imageDataURL) {
             'Content-Type': 'application/json'
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(errorData => {
+                throw new Error(errorData.message || 'Server error');
+            });
+        }
+        return response.json();
+    })
     .then(data => {
         displayResult(data);
     })
     .catch((error) => {
         console.error('Error:', error);
+        displayResult({ status: 'error', message: error.message });
     });
 }
 
 function displayResult(data) {
-    const resultMessage = document.getElementById('resultMessage');
+    stopCamera();
+    verificationPage.style.display = 'none';
+    resultPage.style.display = 'block';
+
     if (data.status === 'authorized') {
-        resultMessage.textContent = 'Authorized';
-        resultMessage.className = 'authorized';
-    } else {
-        resultMessage.textContent = 'Unauthorized';
-        resultMessage.className = 'unauthorized';
+        resultText.textContent = 'Authorized';
+        resultText.style.color = 'green';
+    } else if (data.status === 'unauthorized') {
+        resultText.textContent = 'Unauthorized';
+        resultText.style.color = 'red';
+    } else if (data.status === 'error') {
+        resultText.textContent = `Error: ${data.message}`;
+        resultText.style.color = 'red';
     }
-    resultMessage.style.display = 'block';
 }
+
+backButton.addEventListener('click', () => {
+    startCamera();
+    verificationPage.style.display = 'block';
+    resultPage.style.display = 'none';
+    resultText.textContent = '';
+});
