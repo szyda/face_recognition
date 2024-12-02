@@ -49,6 +49,7 @@ class DataProcessor(Sequence):
     def preprocess_image(image_input, image_size=(224, 224)):
         if isinstance(image_input, str):
             image = cv2.imread(image_input)
+            image = DataProcessor.crop_face(image)
             if image is None:
                 raise ValueError(f"Unable to read image at {image_input}")
         elif isinstance(image_input, np.ndarray):
@@ -181,3 +182,21 @@ class DataProcessor(Sequence):
         self.indices = np.arange(len(self.pairs))
         if self.shuffle:
             np.random.shuffle(self.indices)
+
+    @staticmethod
+    def crop_face(image):
+        if image is None:
+            raise ValueError(f"No image at {image}")
+
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        if len(faces) == 0:
+            return None
+
+        x, y, w, h = faces[0]
+        face = image[y:y + h, x:x + w]
+
+        return face
+
