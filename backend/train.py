@@ -1,7 +1,6 @@
-# TF_FORCE_GPU_ALLOW_GROWTH=true TF_CPP_MIN_LOG_LEVEL=1 python3 /home/s/face_recognition/main.py
-import os
-from face_recognizer import FaceRecognition
-from data_processor import DataProcessor
+# TF_FORCE_GPU_ALLOW_GROWTH=true TF_CPP_MIN_LOG_LEVEL=1 python3 /home/s/face_recognition/train.py
+from backend.face_recognizer import FaceRecognition
+from backend.data_processor import DataProcessor
 
 
 def main():
@@ -44,7 +43,7 @@ def main():
         mode='validation'
     )
 
-    file_path = "1-december-model.weights.h5"
+    file_path = "model.weights.h5"
 
     face_recognizer = FaceRecognition(input_shape=image_size + (3,), learning_rate=0.00005, dropout_rate=0.2, file_path=file_path)
     history = face_recognizer.train(

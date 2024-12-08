@@ -6,6 +6,7 @@ from itertools import combinations
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications.vgg16 import preprocess_input
+import matplotlib.pyplot as plt
 
 class DataProcessor(Sequence):
     def __init__(self,
@@ -49,7 +50,6 @@ class DataProcessor(Sequence):
     def preprocess_image(image_input, image_size=(224, 224)):
         if isinstance(image_input, str):
             image = cv2.imread(image_input)
-            image = DataProcessor.crop_face(image)
             if image is None:
                 raise ValueError(f"Unable to read image at {image_input}")
         elif isinstance(image_input, np.ndarray):
@@ -143,7 +143,7 @@ class DataProcessor(Sequence):
         return int(np.ceil(len(self.indices) / self.batch_size))
 
     def __getitem__(self, index):
-        # deubg
+        # debug
         if index >= self.__len__():
             print(f"Index {index} is out of range. Total batches: {self.__len__()}")
             raise IndexError("Index out of range")
@@ -184,19 +184,19 @@ class DataProcessor(Sequence):
             np.random.shuffle(self.indices)
 
     @staticmethod
-    def crop_face(image):
+    def crop_face(image, image_path=None):
         if image is None:
             raise ValueError(f"No image at {image}")
 
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
 
         if len(faces) == 0:
+            print("No faces detected")
             return None
 
         x, y, w, h = faces[0]
         face = image[y:y + h, x:x + w]
 
         return face
-

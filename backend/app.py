@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from face_recognizer import FaceRecognition
-from data_processor import DataProcessor
+from backend.face_recognizer import FaceRecognition
+from backend.data_processor import DataProcessor
 import base64
 import numpy as np
 import cv2
 import os
+import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -14,69 +15,75 @@ face_recognizer = FaceRecognition(
     input_shape=(224, 224, 3),
     learning_rate=0.00005,
     dropout_rate=0.2,
-    file_path='../1-december-model.weights.h5'
+    file_path='../backend/model.weights.h5'
 )
-face_recognizer.model.load_weights('/Users/sszyda/face_recognition/1-december-model.weights.h5')
+face_recognizer.model.load_weights('../backend/model.weights.h5')
 
-REFERENCE_IMAGES_DIR = '../database'
+DATABASE = '../database'
+ENTRY_LOGS = '../entry_logs'
 
-def load_reference_images():
+def crop_and_preprocess_face(image):
+    cropped_face = DataProcessor.crop_face(image)
+    if cropped_face is None:
+        raise ValueError("No face detected")
+    preprocessed_face = DataProcessor.preprocess_image(cropped_face, image_size=(224, 224))
+
+    return cropped_face, np.expand_dims(preprocessed_face, axis=0)
+
+def load_database():
     reference_images = []
     reference_names = []
-    for filename in os.listdir(REFERENCE_IMAGES_DIR):
+    for filename in os.listdir(DATABASE):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            filepath = os.path.join(REFERENCE_IMAGES_DIR, filename)
+            filepath = os.path.join(DATABASE, filename)
             try:
-                ref_img = DataProcessor.preprocess_image(filepath, image_size=(224, 224))
-                ref_img = np.expand_dims(ref_img, axis=0)
+                img_array = cv2.imread(filepath)
+                if img_array is None:
+                    raise ValueError(f"Unable to read image: {filepath}")
+
+                _, ref_img = crop_and_preprocess_face(img_array)
                 reference_images.append(ref_img)
                 reference_names.append(os.path.splitext(filename)[0])
             except ValueError as e:
                 print(f"Error processing reference image {filepath}: {e}")
     return reference_images, reference_names
 
-reference_images, reference_names = load_reference_images()
+reference_images, reference_names = load_database()
 
 @app.route('/verify', methods=['POST'])
 def verify():
-    print("Received /verify POST request")
     try:
         data = request.get_json()
-        print("Data received")
         image_data = data.get('image', None)
-        if image_data is None:
-            print("No image data provided")
+        if not image_data:
             return jsonify({'status': 'error', 'message': 'No image data provided'}), 400
-        # cv2.imshow(image_data)
 
-        try:
-            header, encoded = image_data.split(",", 1)
-            decoded_bytes = base64.b64decode(encoded)
-            nparr = np.frombuffer(decoded_bytes, np.uint8)
-            img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            print("Image decoded successfully")
-        except Exception as e:
-            print(f"Error decoding image: {e}")
-            return jsonify({'status': 'error', 'message': 'Invalid image data'}), 400
+        # decode
+        header, encoded = image_data.split(",", 1)
+        decoded_bytes = base64.b64decode(encoded)
+        nparr = np.frombuffer(decoded_bytes, np.uint8)
+        img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        try:
-            img = DataProcessor.preprocess_image(img_array, image_size=(224, 224))
-            img = np.expand_dims(img, axis=0)
-            print("Captured image preprocessed")
-        except ValueError as e:
-            print(f"Error preprocessing image: {e}")
-            return jsonify({'status': 'error', 'message': str(e)}), 400
+        # preprocess
+        cropped_face, preprocessed_face = crop_and_preprocess_face(img_array)
+        print("Face cropped and preprocessed")
+
+        # entry log
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = os.path.join(ENTRY_LOGS, f"log_{timestamp}.jpg")
+        cv2.imwrite(log_filename, cropped_face)
+        print(f"Cropped face saved to {log_filename}")
 
         max_score = 0
         best_match = None
-        threshold = 0.8
+        threshold = 0.7
 
         if not reference_images:
             print("No reference images loaded")
             return jsonify({'status': 'error', 'message': 'No reference images available'}), 500
 
         for ref_img, name in zip(reference_images, reference_names):
-            prediction = face_recognizer.model.predict([img, ref_img])[0][0]
+            prediction = face_recognizer.model.predict([preprocessed_face, ref_img])[0][0]
             print(f"Compared with {name}, prediction score: {prediction}")
             if prediction > max_score:
                 max_score = prediction
@@ -90,6 +97,10 @@ def verify():
         result = {'status': 'unauthorized', 'max_score': float(max_score), 'best_match': best_match}
         print(f"Unauthorized: {result}")
         return jsonify(result)
+
+    except ValueError as e:
+        print(f"Error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 400
 
     except Exception as e:
         print(f"Unhandled exception: {e}")

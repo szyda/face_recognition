@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 
 class FaceRecognition:
-    def __init__(self, input_shape=(224, 224, 3), learning_rate=0.0001, dropout_rate=0.3, file_path = 'model.weights.h5'):
+    def __init__(self, input_shape=(224, 224, 3), learning_rate=0.0001, dropout_rate=0.3, file_path='model.weights.h5'):
         self.input_shape = input_shape
         self.learning_rate = learning_rate
         self.dropout_rate = dropout_rate
