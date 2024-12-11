@@ -1,15 +1,15 @@
-# tests based on digiface-1m P2 dataset
+# tests based on celebrity image face dataset
 import os
 from face_recognizer import FaceRecognition
 from data_processor import DataProcessor
 
 
 def main():
-    data_directory = "digiface"
+    data_directory = "celebs"
     image_size = (224, 224)
     batch_size = 32
     num_pairs_per_identity = 50
-    model_weights_path = "model.weights.h5"
+    model_weights_path = "../model.weights.h5"
 
     identity_to_images = DataProcessor.load_data(data_directory)
     identities = list(identity_to_images.keys())
