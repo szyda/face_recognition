@@ -166,3 +166,4 @@ model_checkpoint.weights.h5
 train/
 val/
 .DS_Store
+.env
