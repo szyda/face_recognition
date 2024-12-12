@@ -86,6 +86,12 @@ class FaceRecognition:
         self.model.save_weights(self.file_path)
         print(f"Weights saved to {self.file_path}")
 
+    def extract_embedding(self, image):
+        # image = np.expand_dims(image, axis=0)
+        embedding = self.feature_extractor.predict(image)
+
+        return embedding.flatten()
+
     def evaluate(self, validation_generator):
         y_true = []
         y_pred_scores = []
