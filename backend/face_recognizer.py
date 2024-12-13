@@ -28,6 +28,8 @@ class FaceRecognition:
         self.model = self.build_model()
         self.file_path = file_path
 
+        self.model.load_weights(self.file_path)
+
     def build_feature_extractor(self):
         base_model = VGG16(weights='imagenet', include_top=False, input_shape=self.input_shape)
 

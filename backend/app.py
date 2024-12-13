@@ -35,25 +35,14 @@ db = client[db_name]
 collection = db[collection_name]
 
 def crop_and_preprocess_face(image):
-    print(f"Original image shape: {image.shape}")  # Log original image shape
-
-    # Crop face and preprocess
     cropped_face = DataProcessor.crop_face(image)
     if cropped_face is None:
         raise ValueError("No face detected")
 
-    print(f"Cropped face shape: {cropped_face.shape}")  # Log shape after cropping
+    print(f"Cropped face shape: {cropped_face.shape}")
 
-    # Preprocess the image to the desired size (224, 224)
     preprocessed_face = DataProcessor.preprocess_image(cropped_face, image_size=(224, 224))
-
-    print(f"Preprocessed face shape (before adding batch dimension): {preprocessed_face.shape}")  # Log shape before batch dim
-
-    # preprocessed_face shape should be (224, 224, 3)
-    # Add batch dimension here to make it (1, 224, 224, 3)
     preprocessed_face = np.expand_dims(preprocessed_face, axis=0)
-
-    print(f"Preprocessed face shape (after adding batch dimension): {preprocessed_face.shape}")  # Log shape after adding batch dim
 
     return cropped_face, preprocessed_face
 
@@ -97,44 +86,34 @@ def verify():
         if not image_data:
             return jsonify({'status': 'error', 'message': 'No image data provided'}), 400
 
-        # Decode image from base64
         header, encoded = image_data.split(",", 1)
         decoded_bytes = base64.b64decode(encoded)
         nparr = np.frombuffer(decoded_bytes, np.uint8)
         img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        print(f"Decoded image shape: {img_array.shape}")  # Log shape after decoding
-
-        # Process image (preprocessed_face will already have the correct shape)
         cropped_face, preprocessed_face = crop_and_preprocess_face(img_array)
 
-        print(f"Cropped face shape in verify route: {cropped_face.shape}")  # Log shape of cropped face
-        print(f"Preprocessed face shape in verify route: {preprocessed_face.shape}")  # Log shape of preprocessed face
-
-        # Now preprocessed_face has shape (1, 224, 224, 3) as expected by the model
         input_embedding = face_recognizer.extract_embedding(preprocessed_face)
-        print(f"After extract embedding {input_embedding.shape}")
         max_score = 0
         best_match = None
-        threshold = 0.7
+        threshold = 0.8
 
-        # Compare with stored embeddings
         for row in collection.find():
             current_embedding = np.array(row['embedding'], dtype=np.float32)
             score = np.dot(input_embedding, current_embedding) / (np.linalg.norm(input_embedding) * np.linalg.norm(current_embedding))
-
+            print(score)
             if score > max_score:
                 max_score = score
                 best_match = row['name']
-
-            if score >= threshold:
-                return jsonify({'status': 'authorized', 'max_score': float(max_score), 'best_match': best_match}), 200
+        print(f"Max score: {max_score}")
+        if score >= threshold:
+            return jsonify({'status': 'authorized', 'max_score': float(max_score), 'best_match': best_match}), 200
 
         return jsonify({'status': 'unauthorized', 'max_score': float(max_score), 'best_match': best_match}), 401
 
     except ValueError as e:
         print(f"Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 400
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
     except Exception as e:
         print(f"Unhandled exception: {e}")
