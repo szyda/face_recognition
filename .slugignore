@@ -1,0 +1,16 @@
+# Ignore virtual environments
+venv/
+__pycache__/
+
+# Ignore development and temporary files
+*.log
+.pytest_cache/
+backend/tests/
+backend/train.py
+dataset/
+docs/
+
+# Ignore unnecessary files
+*.csv
+*.mp4
+*.avi
