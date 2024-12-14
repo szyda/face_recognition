@@ -42,6 +42,13 @@ def preprocess_with_data_processor(image):
 
     return cropped_face, preprocessed_face
 
+@app.route('/')
+def serve_index():
+    return send_from_directory('static', 'index.html')
+
+@app.route('/<path:path>')
+def serve_index():
+    return send_from_directory('static', path)
 
 @app.route('/add_identity', methods=['POST'])
 def add_identity():
@@ -120,4 +127,5 @@ def verify():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
