@@ -165,5 +165,12 @@ logs/
 model_checkpoint.weights.h5
 train/
 val/
+new_env
 .DS_Store
-.env
+*.env
+*.sh
+.idea
+*.png
+*.jpeg
+*.jpg
+
