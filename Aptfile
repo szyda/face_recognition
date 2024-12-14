@@ -1,3 +1,5 @@
 cmake
 libboost-all-dev
 g++
+libx11-dev
+libopenblas-dev

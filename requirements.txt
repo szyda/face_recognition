@@ -1,6 +1,6 @@
 boto3==1.35.81
-dlib==19.24.6
 bson-py==1.0.0
+dlib==19.24.6
 face-recognition==1.3.0
 flask-cors==5.0.0
 flask-pymongo==2.3.0
@@ -8,6 +8,7 @@ fsspec==2024.6.1
 importlib-resources==6.4.4
 json-utils==0.2
 matplotlib==3.9.3
+numpy==1.26.4
 opencv-python==4.9.0.80
 pandas==2.2.1
 python-dotenv==1.0.1
