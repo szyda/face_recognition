@@ -18,7 +18,7 @@ def main():
     identities = list(identity_to_images.keys())
     train_identities, val_identities = DataProcessor.split_identities(identities, validation_split)
 
-    print(f"Loaded {len(identity_to_images)} identities from {data_directory}.")
+    print(f"Loaded {len(idetity_to_images)} identities from {data_directory}.")
     print(f"Split into {len(train_identities)} training and {len(val_identities)} validation identities.")
 
     train_generator = DataProcessor(

@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from backend.face_recognizer import FaceRecognition
-from backend.data_processor import DataProcessor
+from face_recognizer import FaceRecognition
+from data_processor import DataProcessor
 import base64
 import numpy as np
 import cv2
@@ -15,11 +15,10 @@ from dotenv import load_dotenv
 app = Flask(__name__)
 CORS(app)
 
-load_dotenv(dotenv_path='../backend/config.env')
+load_dotenv(dotenv_path='./config.env')
 mongo_uri = os.getenv("MONGO_URI")
 db_name = os.getenv("DB_NAME")
 collection_name = os.getenv("COLLECTION_NAME")
-
 client = MongoClient(mongo_uri)
 db = client[db_name]
 collection = db[collection_name]
@@ -47,7 +46,7 @@ def serve_index():
     return send_from_directory('static', 'index.html')
 
 @app.route('/<path:path>')
-def serve_index():
+def serve_static():
     return send_from_directory('static', path)
 
 @app.route('/add_identity', methods=['POST'])

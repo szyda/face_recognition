@@ -31,7 +31,7 @@ class FaceRecognition:
 
         self.bucket_name = os.getenv("AWS_BUCKET_NAME")
         self.s3_file_path = os.getenv("FILE_PATH")
-        self.local_file_path = "../backend/model.weights.h5"
+        self.local_file_path = "./model.weights.h5"
 
         self.load_weights()
 
@@ -104,6 +104,7 @@ class FaceRecognition:
 
         s3 = boto3.client("s3")
         try:
+            print(self.bucket_name, self.s3_file_path, self.local_file_path)
             s3.download_file(self.bucket_name, self.s3_file_path, self.local_file_path)
             print(f"Downloaded weights from S3: {self.s3_file_path} -> {self.local_file_path}")
         except Exception as e:
