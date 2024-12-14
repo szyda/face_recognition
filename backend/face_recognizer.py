@@ -17,6 +17,7 @@ from sklearn.metrics import (
     precision_recall_curve,
 )
 import matplotlib.pyplot as plt
+import boto3
 
 
 class FaceRecognition:
@@ -28,7 +29,12 @@ class FaceRecognition:
         self.model = self.build_model()
         self.file_path = file_path
 
-        self.model.load_weights(self.file_path)
+        self.bucket_name = os.getenv("AWS_BUCKET_NAME")
+        self.s3_file_path = os.getenv("FILE_PATH")
+        self.local_file_path = "../backend/model.weights.h5"
+
+        self.load_weights()
+
 
     def build_feature_extractor(self):
         base_model = VGG16(weights='imagenet', include_top=False, input_shape=self.input_shape)
@@ -89,10 +95,29 @@ class FaceRecognition:
         print(f"Weights saved to {self.file_path}")
 
     def extract_embedding(self, image):
-        # image = np.expand_dims(image, axis=0)
         embedding = self.feature_extractor.predict(image)
-
         return embedding.flatten()
+
+    def download_from_s3(self):
+        if not self.bucket_name:
+            raise ValueError("AWS_BUCKET_NAME is not set in the environment variables.")
+
+        s3 = boto3.client("s3")
+        try:
+            s3.download_file(self.bucket_name, self.s3_file_path, self.local_file_path)
+            print(f"Downloaded weights from S3: {self.s3_file_path} -> {self.local_file_path}")
+        except Exception as e:
+            print(f"Failed to download weights from S3: {e}")
+
+    def load_weights(self):
+        if not os.path.exists(self.local_file_path):
+            print(f"Attempting to download from S3...")
+            self.download_from_s3()
+        if os.path.exists(self.local_file_path):
+            self.model.load_weights(self.local_file_path)
+            print(f"Weights loaded from: {self.local_file_path}")
+        else:
+            print("Weights not available locally or on S3.")
 
     def evaluate(self, validation_generator):
         y_true = []
