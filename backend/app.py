@@ -9,10 +9,10 @@ import os
 import datetime
 from pymongo import MongoClient
 from bson.binary import Binary
-import json
 from dotenv import load_dotenv
+import tensorflow as tf
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 CORS(app)
 
 load_dotenv(dotenv_path='./config.env')
@@ -23,35 +23,44 @@ client = MongoClient(mongo_uri)
 db = client[db_name]
 collection = db[collection_name]
 
-print("Initializing model ...")
-face_recognizer = FaceRecognition(
-    input_shape=(224, 224, 3),
-    learning_rate=0.00005,
-    dropout_rate=0.2,
-    file_path='../backend/model.weights.h5'
-)
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+physical_devices = tf.config.list_physical_devices('GPU')
+if physical_devices:
+    for device in physical_devices:
+        tf.config.experimental.set_memory_growth(device, True)
+
+face_recognizer = None
+
+def get_face_recognizer():
+    global face_recognizer
+    if face_recognizer is None:
+        print("Initializing model ...")
+        face_recognizer = FaceRecognition(
+            input_shape=(224, 224, 3),
+            learning_rate=0.00005,
+            dropout_rate=0.2,
+            file_path='../backend/model.weights.h5'
+        )
+    return face_recognizer
+
+@app.route('/')
+def serve_index():
+    return app.send_static_file('index.html')
 
 def preprocess_with_data_processor(image):
     cropped_face = DataProcessor.crop_face(image)
     if cropped_face is None:
         raise ValueError("No face detected")
 
-    preprocessed_face = DataProcessor.preprocess_image(cropped_face, image_size=(224, 224))
-    preprocessed_face = np.expand_dims(preprocessed_face, axis=0)
-
-    return cropped_face, preprocessed_face
-
-@app.route('/')
-def serve_index():
-    return send_from_directory('static', 'index.html')
-
-@app.route('/<path:path>')
-def serve_static():
-    return send_from_directory('static', path)
+    cropped_face = cv2.resize(cropped_face, (224, 224))
+    cropped_face = cv2.cvtColor(cropped_face, cv2.COLOR_BGR2RGB)
+    cropped_face = tf.keras.applications.vgg16.preprocess_input(cropped_face)
+    return np.expand_dims(cropped_face, axis=0)
 
 @app.route('/add_identity', methods=['POST'])
 def add_identity():
     try:
+        face_recognizer = get_face_recognizer()
         data = request.get_json()
         image_data = data.get('image', None)
         name = data.get('name', None)
@@ -76,10 +85,10 @@ def add_identity():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
 @app.route('/verify', methods=['POST'])
 def verify():
     try:
+        face_recognizer = get_face_recognizer()
         data = request.get_json()
         image_data = data.get('image', None)
         if not image_data:
@@ -92,8 +101,6 @@ def verify():
         _, preprocessed_face = preprocess_with_data_processor(img_array)
 
         query_embedding = face_recognizer.feature_extractor.predict(preprocessed_face)
-        print("Embedding Norm (verify):", np.linalg.norm(query_embedding))
-
         max_score = 0
         best_match = None
         threshold = 0.7
@@ -101,11 +108,10 @@ def verify():
         dense_layer = face_recognizer.model.layers[-1]
         dense_weights, dense_bias = dense_layer.get_weights()
 
-        for row in collection.find():
+        for row in collection.find({}, {"name": 1, "embedding": 1}):
             stored_embedding = np.array(row.get("embedding"), dtype=np.float32)
             l1_distance = np.abs(query_embedding - stored_embedding)
             similarity_score = 1 / (1 + np.exp(-(np.dot(l1_distance, dense_weights) + dense_bias)))
-            similarity_score = float(similarity_score)
 
             if similarity_score > max_score:
                 max_score = similarity_score
@@ -116,14 +122,8 @@ def verify():
 
         return jsonify({'status': 'unauthorized', 'max_score': max_score, 'best_match': best_match}), 200
 
-    except ValueError as e:
-        print(f"Error: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
     except Exception as e:
-        print(f"Unhandled exception: {e}")
-        return jsonify({'status': 'error', 'message': 'An internal error occurred'}), 500
-
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
