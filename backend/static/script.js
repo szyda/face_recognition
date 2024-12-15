@@ -37,7 +37,8 @@ document.getElementById('verifyButton').addEventListener('click', () => {
 });
 
 function verifyIdentity(imageDataURL) {
-    fetch('https://face-recognition-app.herokuapp.com/verify', {
+    const serverUrl = `${window.location.protocol}//${window.location.host}/verify`;
+    fetch(serverUrl, {
         method: 'POST',
         body: JSON.stringify({ image: imageDataURL }),
         headers: {
