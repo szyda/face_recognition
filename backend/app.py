@@ -29,12 +29,6 @@ mongo_client = MongoClient(mongo_uri)
 db = mongo_client[db_name]
 collection = db[collection_name]
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-physical_devices = tf.config.list_physical_devices('GPU')
-if physical_devices:
-    for device in physical_devices:
-        tf.config.experimental.set_memory_growth(device, True)
-
 face_recognizer = None
 
 def preprocess_with_data_processor(image):
@@ -85,32 +79,23 @@ def add_identity():
         print(f"Encoded data length: {len(encoded)}")
 
         try:
-            # Decode the image
             decoded_bytes = base64.b64decode(encoded)
-            print(f"Decoded bytes length: {len(decoded_bytes)}")
 
-            # Convert to numpy array
             nparr = np.frombuffer(decoded_bytes, np.uint8)
-            print(f"Numpy array shape: {nparr.shape}")
 
-            # Decode the image into an array
             img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             if img_array is None:
                 raise ValueError("Failed to decode image using OpenCV")
 
-            print(f"Image shape: {img_array.shape}")
-
         except Exception as e:
             return jsonify({'status': 'error', 'message': f'Failed to process image: {e}'}), 400
 
-        # Preprocess and predict
         try:
             preprocessed_face = preprocess_with_data_processor(img_array)
             embedding = face_recognizer.feature_extractor.predict(preprocessed_face)
         except Exception as e:
             return jsonify({'status': 'error', 'message': f'Failed during prediction: {e}'}), 500
 
-        # Insert into MongoDB
         try:
             collection.insert_one({
                 'name': name,
@@ -132,14 +117,19 @@ def verify():
         face_recognizer = get_face_recognizer()
         data = request.get_json()
         image_data = data.get('image', None)
+        
         if not image_data:
+            return jsonify({'status': 'error', 'message': 'No image data provided'}), 400
+        
+
+        if "," not in image_data:
             return jsonify({'status': 'error', 'message': 'No image data provided'}), 400
 
         header, encoded = image_data.split(",", 1)
         decoded_bytes = base64.b64decode(encoded)
         nparr = np.frombuffer(decoded_bytes, np.uint8)
         img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        _, preprocessed_face = preprocess_with_data_processor(img_array)
+        preprocessed_face = preprocess_with_data_processor(img_array)
 
         query_embedding = face_recognizer.feature_extractor.predict(preprocessed_face)
         max_score = 0
@@ -158,10 +148,12 @@ def verify():
                 max_score = similarity_score
                 best_match = row.get("name")
 
+        print(f"Max score: {max_score}, best match: {best_match}")
+        
         if max_score >= threshold:
-            return jsonify({'status': 'authorized', 'max_score': max_score, 'best_match': best_match}), 200
+            return jsonify({'status': 'authorized', 'max_score': float(max_score), 'best_match': best_match}), 200
 
-        return jsonify({'status': 'unauthorized', 'max_score': max_score, 'best_match': best_match}), 200
+        return jsonify({'status': 'unauthorized', 'max_score': float(max_score), 'best_match': best_match}), 200
 
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

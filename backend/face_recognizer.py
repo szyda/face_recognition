@@ -115,8 +115,11 @@ class FaceRecognition:
             print(f"Attempting to download from S3...")
             self.download_from_s3()
         if os.path.exists(self.local_file_path):
-            self.model.load_weights(self.local_file_path)
-            print(f"Weights loaded from: {self.local_file_path}")
+            try:
+                self.model.load_weights(self.local_file_path)
+                print(f"Weights loaded from: {self.local_file_path}")
+            except Exception as e:
+                print(f"Error loadng weights: {e}")
         else:
             print("Weights not available locally or on S3.")
 
