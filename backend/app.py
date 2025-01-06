@@ -86,7 +86,6 @@ def verify():
         _, preprocessed_face = preprocess_with_data_processor(img_array)
 
         query_embedding = face_recognizer.feature_extractor.predict(preprocessed_face)
-        print("Embedding Norm (verify):", np.linalg.norm(query_embedding))
 
         max_score = 0
         best_match = None
@@ -95,20 +94,21 @@ def verify():
         dense_layer = face_recognizer.model.layers[-1]
         dense_weights, dense_bias = dense_layer.get_weights()
 
-        for row in collection.find():
+        for row in collection.find({}, {"name": 1, "embedding": 1}).limit(5):
             stored_embedding = np.array(row.get("embedding"), dtype=np.float32)
             l1_distance = np.abs(query_embedding - stored_embedding)
             similarity_score = 1 / (1 + np.exp(-(np.dot(l1_distance, dense_weights) + dense_bias)))
-            similarity_score = float(similarity_score)
 
             if similarity_score > max_score:
                 max_score = similarity_score
                 best_match = row.get("name")
 
-        if max_score >= threshold:
-            return jsonify({'status': 'authorized', 'max_score': max_score, 'best_match': best_match}), 200
+        print(f"Max score: {max_score}, best match: {best_match}")
 
-        return jsonify({'status': 'unauthorized', 'max_score': max_score, 'best_match': best_match}), 200
+        if max_score >= threshold:
+            return jsonify({'status': 'authorized', 'max_score': float(max_score), 'best_match': best_match}), 200
+
+        return jsonify({'status': 'unauthorized', 'max_score': float(max_score), 'best_match': best_match}), 200
 
     except ValueError as e:
         print(f"Error: {e}")
