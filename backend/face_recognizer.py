@@ -31,7 +31,7 @@ class FaceRecognition:
 
         self.bucket_name = os.getenv("AWS_BUCKET_NAME")
         self.s3_file_path = os.getenv("FILE_PATH")
-        self.local_file_path = "../backend/model.weights.h5"
+        self.local_file_path = " "
 
         self.load_weights()
 
@@ -145,27 +145,3 @@ class FaceRecognition:
                     y_true, y_pred, target_names=["Dissimilar", "Similar"]
                 )
             )
-
-        fpr, tpr, thresholds_roc = roc_curve(y_true, y_pred_scores)
-        roc_auc = auc(fpr, tpr)
-        plt.figure()
-        plt.plot(fpr, tpr, label=f"ROC curve (AUC = {roc_auc:.2f})")
-        plt.plot([0, 1], [0, 1], "k--")
-        plt.xlabel("False Positive Rate")
-        plt.ylabel("True Positive Rate")
-        plt.title("ROC Curve")
-        plt.legend(loc="lower right")
-        plt.savefig('roc_curve.png')
-        plt.show()
-        plt.close()
-
-        precision, recall, thresholds_pr = precision_recall_curve(y_true, y_pred_scores)
-        plt.figure()
-        plt.plot(recall, precision, label="Precision-Recall curve")
-        plt.xlabel("Recall")
-        plt.ylabel("Precision")
-        plt.title("Precision-Recall Curve")
-        plt.legend(loc="lower left")
-        plt.savefig('precision_recall_curve.png')
-        plt.show()
-        plt.close()

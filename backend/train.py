@@ -1,6 +1,6 @@
 # TF_FORCE_GPU_ALLOW_GROWTH=true TF_CPP_MIN_LOG_LEVEL=1 python3 /home/s/face_recognition/train.py
-from backend.face_recognizer import FaceRecognition
-from backend.data_processor import DataProcessor
+from face_recognizer import FaceRecognition
+from data_processor import DataProcessor
 
 
 def main():
@@ -10,8 +10,8 @@ def main():
     augment = True
     shuffle = True
     validation_split = 0.35
-    num_identities_to_use = None # Use all identities
-    num_images_per_identity = None  # Use all images per identity
+    num_identities_to_use = None
+    num_images_per_identity = None
     num_pairs_per_identity = 50
 
     identity_to_images = DataProcessor.load_data(data_directory, num_identities_to_use, num_images_per_identity)

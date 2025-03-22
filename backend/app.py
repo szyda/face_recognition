@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from backend.face_recognizer import FaceRecognition
-from backend.data_processor import DataProcessor
+from face_recognizer import FaceRecognition
+from data_processor import DataProcessor
 import base64
 import numpy as np
 import cv2
@@ -29,7 +29,7 @@ face_recognizer = FaceRecognition(
     input_shape=(224, 224, 3),
     learning_rate=0.00005,
     dropout_rate=0.2,
-    file_path='../backend/model.weights.h5'
+    file_path='/Users/sszyda/face_recognition/model.weights.h5'
 )
 
 def preprocess_with_data_processor(image):
@@ -89,7 +89,7 @@ def verify():
 
         max_score = 0
         best_match = None
-        threshold = 0.7
+        threshold = 0.3
 
         dense_layer = face_recognizer.model.layers[-1]
         dense_weights, dense_bias = dense_layer.get_weights()
